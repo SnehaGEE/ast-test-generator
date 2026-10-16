@@ -1,3 +1,4 @@
+
 import ast
 
 
@@ -18,7 +19,21 @@ class ConditionAnalyzer(ast.NodeVisitor):
             and isinstance(condition.comparators[0], ast.Constant)
         ):
             variable = condition.left.id
-            operator = type(condition.ops[0]).__name__
+
+            operator_symbols = {
+                "Gt": ">",
+                "GtE": ">=",
+                "Lt": "<",
+                "LtE": "<=",
+                "Eq": "==",
+                "NotEq": "!="
+            }
+
+            operator_name = type(condition.ops[0]).__name__
+            operator = operator_symbols.get(
+                operator_name, operator_name
+            )
+
             constant = condition.comparators[0].value
 
             self.conditions.append({
@@ -32,28 +47,10 @@ class ConditionAnalyzer(ast.NodeVisitor):
 
 
 def analyze_source(source_code):
-    """Parse Python source code and return detected conditions."""
+    """Parse source code and return detected conditions."""
     tree = ast.parse(source_code)
 
     analyzer = ConditionAnalyzer()
     analyzer.visit(tree)
 
     return analyzer.conditions
-
-
-if __name__ == "__main__":
-    sample_code = """
-def check_age(age):
-    if age >= 18:
-        return "Adult"
-    else:
-        return "Minor"
-"""
-
-    conditions = analyze_source(sample_code)
-
-    for condition in conditions:
-        print(f"Variable : {condition['variable']}")
-        print(f"Operator : {condition['operator']}")
-        print(f"Constant : {condition['constant']}")
-        print(f"Line     : {condition['line']}")

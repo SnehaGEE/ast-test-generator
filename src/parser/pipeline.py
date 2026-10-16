@@ -1,5 +1,6 @@
 from analyzer.condition_analyzer import analyze_source
 from analyzer.generator.test_generator import generate_boundary_tests
+from analyzer.generator.executor.test_executor import execute_test_case
 
 
 print("========================================")
@@ -27,7 +28,12 @@ print()
 print("Analyzing program...")
 print()
 
-conditions = analyze_source(source_code)
+try:
+    conditions = analyze_source(source_code)
+except SyntaxError as error:
+    print("Invalid Python syntax!")
+    print(f"Error on line {error.lineno}: {error.msg}")
+    raise SystemExit(1)
 
 if not conditions:
     print("No supported conditions were detected.")
@@ -45,6 +51,27 @@ else:
         print("Generated targeted test cases:")
 
         for test_case in test_cases:
-            print(f"  {test_case}")
+            variable_values = {}
+
+            for detected_condition in conditions:
+                variable = detected_condition["variable"]
+                constant = detected_condition["constant"]
+
+                if (
+                    isinstance(constant, (int, float))
+                    and not isinstance(constant, bool)
+                ):
+                    variable_values[variable] = constant
+
+            variable_values[condition["variable"]] = test_case
+
+            print(f"  Test inputs: {variable_values}")
+
+            result = execute_test_case(source_code, variable_values)
+
+            if result["success"]:
+                print(f"  Program output: {result['output'].rstrip()}")
+            else:
+                print(f"  Execution error: {result['error']}")
 
         print()
