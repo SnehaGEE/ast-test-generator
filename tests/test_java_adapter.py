@@ -1,6 +1,7 @@
 
 import unittest
 
+from src.core.models import TestCase
 from src.languages.java.adapter import JavaAdapter
 
 
@@ -67,6 +68,28 @@ public class Broken {
     def test_rejects_empty_source(self):
         with self.assertRaises(ValueError):
             self.adapter.parse("   ")
+
+    def test_executes_java_program(self):
+        source = """
+public class AgeCheck {
+    public static void main(String[] args) {
+        int age = Integer.parseInt(
+            System.getProperty("age", "0")
+        );
+
+        if (age >= 18) {
+            System.out.println("Adult");
+        } else {
+            System.out.println("Minor");
+        }
+    }
+}
+"""
+        test_case = TestCase(inputs={"age": 18})
+        result = self.adapter.execute(source, test_case)
+
+        self.assertTrue(result.executed, result.error)
+        self.assertEqual(result.output.strip(), "Adult")
 
 
 if __name__ == "__main__":

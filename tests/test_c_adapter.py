@@ -1,6 +1,7 @@
 
 import unittest
 
+from src.core.models import TestCase
 from src.languages.c.adapter import CAdapter
 
 
@@ -67,6 +68,33 @@ int main(void) {
     def test_rejects_empty_source(self):
         with self.assertRaises(ValueError):
             self.adapter.parse("   ")
+
+    def test_executes_c_program(self):
+        source = """
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        return 1;
+    }
+
+    int age = atoi(argv[1]);
+
+    if (age >= 18) {
+        printf("Adult\\n");
+    } else {
+        printf("Minor\\n");
+    }
+
+    return 0;
+}
+"""
+        test_case = TestCase(inputs={"age": 18})
+        result = self.adapter.execute(source, test_case)
+
+        self.assertTrue(result.executed, result.error)
+        self.assertEqual(result.output.strip(), "Adult")
 
 
 if __name__ == "__main__":
