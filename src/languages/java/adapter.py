@@ -4,45 +4,116 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+
+import tree_sitter
+import tree_sitter_java
 
 from src.core.interfaces import LanguageAdapter
 from src.core.models import Condition, TestCase, TestResult
 
 
 class JavaAdapter(LanguageAdapter):
-    """Basic Java adapter for simple numeric if conditions."""
+    """Java adapter using Tree-sitter for syntax parsing."""
 
-    CONDITION_PATTERN = re.compile(
-        r"\bif\s*\(\s*([A-Za-z_]\w*)\s*"
-        r"(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)\s*\)"
-    )
+    def __init__(self):
+        self.language = tree_sitter.Language(tree_sitter_java.language())
+        self.parser = tree_sitter.Parser(self.language)
 
-    def parse(self, source_code: str) -> str:
-        """Return Java source after checking that it is non-empty."""
+    def parse(self, source_code: str):
+        """Parse Java source into a Tree-sitter syntax tree."""
         if not source_code.strip():
             raise ValueError("Java source code is empty.")
-        return source_code
+
+        tree = self.parser.parse(source_code.encode("utf-8"))
+
+        if tree.root_node.has_error:
+            raise ValueError("Java source contains syntax errors.")
+
+        return tree
 
     def analyze(self, source_code: str) -> list[Condition]:
-        """Detect simple variable-to-numeric-constant conditions."""
+        """Extract supported numeric comparisons from Java if conditions."""
+        tree = self.parse(source_code)
+        source_bytes = source_code.encode("utf-8")
         conditions = []
 
-        for match in self.CONDITION_PATTERN.finditer(source_code):
-            variable, operator, raw_value = match.groups()
-            value = float(raw_value) if "." in raw_value else int(raw_value)
-            line = source_code.count("\n", 0, match.start()) + 1
+        supported_operators = {
+            ">": ">",
+            ">=": ">=",
+            "<": "<",
+            "<=": "<=",
+            "==": "==",
+            "!=": "!=",
+        }
 
-            conditions.append(
-                Condition(
-                    variable=variable,
-                    operator=operator,
-                    value=value,
-                    line=line,
-                    language="java",
-                )
-            )
+        def visit(node):
+            if node.type == "if_statement":
+                condition_node = node.child_by_field_name("condition")
 
+                if condition_node is not None:
+                    extract_comparisons(condition_node)
+
+            for child in node.children:
+                visit(child)
+
+        def extract_comparisons(node):
+            if node.type == "parenthesized_expression":
+                for child in node.named_children:
+                    extract_comparisons(child)
+                return
+
+            if node.type == "binary_expression":
+                operator_node = node.child_by_field_name("operator")
+                left_node = node.child_by_field_name("left")
+                right_node = node.child_by_field_name("right")
+
+                if operator_node and left_node and right_node:
+                    operator = source_bytes[
+                        operator_node.start_byte:operator_node.end_byte
+                    ].decode("utf-8")
+
+                    left_text = source_bytes[
+                        left_node.start_byte:left_node.end_byte
+                    ].decode("utf-8")
+
+                    right_text = source_bytes[
+                        right_node.start_byte:right_node.end_byte
+                    ].decode("utf-8")
+
+                    if (
+                        operator in supported_operators
+                        and left_node.type == "identifier"
+                        and right_node.type in {
+                            "decimal_integer_literal",
+                            "decimal_floating_point_literal",
+                        }
+                    ):
+                        value = (
+                            float(right_text)
+                            if "." in right_text
+                            else int(right_text)
+                        )
+
+                        conditions.append(
+                            Condition(
+                                variable=left_text,
+                                operator=supported_operators[operator],
+                                value=value,
+                                line=node.start_point.row + 1,
+                                language="java",
+                            )
+                        )
+                        return
+
+                # Also inspect nested comparisons in compound conditions.
+                for child in node.named_children:
+                    extract_comparisons(child)
+                return
+
+            for child in node.named_children:
+                extract_comparisons(child)
+
+        visit(tree.root_node)
         return conditions
 
     def execute(
@@ -50,7 +121,7 @@ class JavaAdapter(LanguageAdapter):
         source_code: str,
         test_case: TestCase,
     ) -> TestResult:
-        """Compile and execute a Java class using supplied variable inputs."""
+        """Compile and execute Java source using JVM system properties."""
         if shutil.which("javac") is None or shutil.which("java") is None:
             return TestResult(
                 inputs=test_case.inputs,
@@ -93,8 +164,6 @@ class JavaAdapter(LanguageAdapter):
                         or "Java compilation failed.",
                     )
 
-                # This first adapter version supplies inputs as JVM system
-                # properties. Java programs must read them explicitly.
                 properties = [
                     f"-D{key}={value}"
                     for key, value in test_case.inputs.items()
@@ -110,10 +179,12 @@ class JavaAdapter(LanguageAdapter):
 
                 return TestResult(
                     inputs=test_case.inputs,
-                    executed=(run_result.returncode == 0),
+                    executed=run_result.returncode == 0,
                     output=run_result.stdout,
-                    error=run_result.stderr.strip() or (
-                        None if run_result.returncode == 0
+                    error=run_result.stderr.strip()
+                    or (
+                        None
+                        if run_result.returncode == 0
                         else f"Java exited with code {run_result.returncode}."
                     ),
                 )
@@ -130,6 +201,7 @@ class JavaAdapter(LanguageAdapter):
                 executed=False,
                 error=f"{type(error).__name__}: {error}",
             )
+
     def execute_and_verify(
         self,
         source_code: str,

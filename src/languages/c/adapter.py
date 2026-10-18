@@ -1,50 +1,127 @@
-import re
+
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+import tree_sitter
+import tree_sitter_c
 
 from src.core.interfaces import LanguageAdapter
 from src.core.models import Condition, TestCase, TestResult
 
 
 class CAdapter(LanguageAdapter):
-    """Basic C adapter for simple numeric if conditions."""
+    """C adapter using Tree-sitter for syntax parsing."""
 
-    CONDITION_PATTERN = re.compile(
-        r"\bif\s*\(\s*([A-Za-z_]\w*)\s*"
-        r"(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)\s*\)"
-    )
+    def __init__(self):
+        self.language = tree_sitter.Language(tree_sitter_c.language())
+        self.parser = tree_sitter.Parser(self.language)
 
-    def parse(self, source_code: str) -> str:
-        """Check that C source code is not empty."""
+    def parse(self, source_code: str):
+        """Parse C source and reject empty or syntactically invalid input."""
         if not source_code.strip():
             raise ValueError("C source code is empty.")
-        return source_code
+
+        tree = self.parser.parse(source_code.encode("utf-8"))
+
+        if tree.root_node.has_error:
+            raise ValueError("C source contains syntax errors.")
+
+        return tree
 
     def analyze(self, source_code: str) -> list[Condition]:
-        """Detect simple variable-to-numeric-constant if conditions."""
+        """Extract supported variable-to-numeric-constant comparisons."""
+        tree = self.parse(source_code)
+        source_bytes = source_code.encode("utf-8")
         conditions = []
 
-        for match in self.CONDITION_PATTERN.finditer(source_code):
-            variable, operator, raw_value = match.groups()
-            value = float(raw_value) if "." in raw_value else int(raw_value)
-            line = source_code.count("\n", 0, match.start()) + 1
+        supported_operators = {">", ">=", "<", "<=", "==", "!="}
 
-            conditions.append(
-                Condition(
-                    variable=variable,
-                    operator=operator,
-                    value=value,
-                    line=line,
-                    language="c",
+        def extract_comparisons(node):
+            if node.type == "parenthesized_expression":
+                for child in node.named_children:
+                    extract_comparisons(child)
+                return
+
+            if node.type == "binary_expression":
+                left_node = node.child_by_field_name("left")
+                right_node = node.child_by_field_name("right")
+                operator_node = next(
+                    (
+                        child for child in node.children
+                        if child.type in {
+                            ">", ">=", "<", "<=", "==", "!=",
+                            "+", "-", "*", "/", "%", "&&", "||",
+                        }
+                    ),
+                    None,
                 )
-            )
 
+                if left_node and right_node and operator_node:
+                    operator = source_bytes[
+                        operator_node.start_byte:operator_node.end_byte
+                    ].decode("utf-8")
+
+                    left_text = source_bytes[
+                        left_node.start_byte:left_node.end_byte
+                    ].decode("utf-8")
+
+                    right_text = source_bytes[
+                        right_node.start_byte:right_node.end_byte
+                    ].decode("utf-8")
+
+                    if (
+                        operator in supported_operators
+                        and left_node.type == "identifier"
+                        and right_node.type in {
+                            "number_literal",
+                            "char_literal",
+                        }
+                    ):
+                        try:
+                            value = (
+                                float(right_text)
+                                if any(char in right_text for char in ".eE")
+                                else int(right_text, 0)
+                            )
+                        except ValueError:
+                            return
+
+                        conditions.append(
+                            Condition(
+                                variable=left_text,
+                                operator=operator,
+                                value=value,
+                                line=node.start_point.row + 1,
+                                language="c",
+                            )
+                        )
+                        return
+
+                # Visit nested comparisons in expressions such as
+                # age >= 18 && score < 50.
+                for child in node.named_children:
+                    extract_comparisons(child)
+                return
+
+            for child in node.named_children:
+                extract_comparisons(child)
+
+        def visit(node):
+            if node.type == "if_statement":
+                condition_node = node.child_by_field_name("condition")
+                if condition_node is not None:
+                    extract_comparisons(condition_node)
+
+            for child in node.children:
+                visit(child)
+
+        visit(tree.root_node)
         return conditions
 
     def execute(self, source_code: str, test_case: TestCase) -> TestResult:
-        """Compile and execute C source with test inputs passed as arguments."""
+        """Compile and execute C source with inputs passed as arguments."""
         if shutil.which("gcc") is None:
             return TestResult(
                 inputs=test_case.inputs,
@@ -56,7 +133,6 @@ class CAdapter(LanguageAdapter):
             with tempfile.TemporaryDirectory(prefix="ast_test_c_") as temp_dir:
                 source_path = Path(temp_dir) / "program.c"
                 executable_path = Path(temp_dir) / "program.exe"
-
                 source_path.write_text(source_code, encoding="utf-8")
 
                 compile_result = subprocess.run(
@@ -90,7 +166,7 @@ class CAdapter(LanguageAdapter):
 
                 return TestResult(
                     inputs=test_case.inputs,
-                    executed=(run_result.returncode == 0),
+                    executed=run_result.returncode == 0,
                     output=run_result.stdout,
                     error=run_result.stderr.strip()
                     or (
@@ -112,6 +188,7 @@ class CAdapter(LanguageAdapter):
                 executed=False,
                 error=f"{type(error).__name__}: {error}",
             )
+
     def execute_and_verify(
         self,
         source_code: str,
