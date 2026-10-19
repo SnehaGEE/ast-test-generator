@@ -47,9 +47,11 @@ class CAdapter(LanguageAdapter):
             if node.type == "binary_expression":
                 left_node = node.child_by_field_name("left")
                 right_node = node.child_by_field_name("right")
+
                 operator_node = next(
                     (
-                        child for child in node.children
+                        child
+                        for child in node.children
                         if child.type in {
                             ">", ">=", "<", "<=", "==", "!=",
                             "+", "-", "*", "/", "%", "&&", "||",
@@ -74,10 +76,7 @@ class CAdapter(LanguageAdapter):
                     if (
                         operator in supported_operators
                         and left_node.type == "identifier"
-                        and right_node.type in {
-                            "number_literal",
-                            "char_literal",
-                        }
+                        and right_node.type == "number_literal"
                     ):
                         try:
                             value = (
@@ -99,8 +98,8 @@ class CAdapter(LanguageAdapter):
                         )
                         return
 
-                # Visit nested comparisons in expressions such as
-                # age >= 18 && score < 50.
+                # Handle nested conditions, e.g.:
+                # age >= 18 && score < 50
                 for child in node.named_children:
                     extract_comparisons(child)
                 return
@@ -111,6 +110,7 @@ class CAdapter(LanguageAdapter):
         def visit(node):
             if node.type == "if_statement":
                 condition_node = node.child_by_field_name("condition")
+
                 if condition_node is not None:
                     extract_comparisons(condition_node)
 
@@ -121,7 +121,7 @@ class CAdapter(LanguageAdapter):
         return conditions
 
     def execute(self, source_code: str, test_case: TestCase) -> TestResult:
-        """Compile and execute C source with inputs passed as arguments."""
+        """Compile and execute C source with test inputs as command-line arguments."""
         if shutil.which("gcc") is None:
             return TestResult(
                 inputs=test_case.inputs,
@@ -133,6 +133,7 @@ class CAdapter(LanguageAdapter):
             with tempfile.TemporaryDirectory(prefix="ast_test_c_") as temp_dir:
                 source_path = Path(temp_dir) / "program.c"
                 executable_path = Path(temp_dir) / "program.exe"
+
                 source_path.write_text(source_code, encoding="utf-8")
 
                 compile_result = subprocess.run(
@@ -147,13 +148,19 @@ class CAdapter(LanguageAdapter):
                     return TestResult(
                         inputs=test_case.inputs,
                         executed=False,
-                        error=compile_result.stderr.strip()
-                        or compile_result.stdout.strip()
-                        or "C compilation failed.",
+                        error=(
+                            compile_result.stderr.strip()
+                            or compile_result.stdout.strip()
+                            or "C compilation failed."
+                        ),
                     )
 
+                # Exclude argc: it is metadata, not a program input.
+                # Sort keys so arguments are passed in a predictable order.
                 arguments = [
-                    str(value) for value in test_case.inputs.values()
+                    str(value)
+                    for key, value in sorted(test_case.inputs.items())
+                    if key != "argc"
                 ]
 
                 run_result = subprocess.run(
@@ -168,11 +175,16 @@ class CAdapter(LanguageAdapter):
                     inputs=test_case.inputs,
                     executed=run_result.returncode == 0,
                     output=run_result.stdout,
-                    error=run_result.stderr.strip()
-                    or (
-                        None
-                        if run_result.returncode == 0
-                        else f"C program exited with code {run_result.returncode}."
+                    error=(
+                        run_result.stderr.strip()
+                        or (
+                            None
+                            if run_result.returncode == 0
+                            else (
+                                "C program exited with code "
+                                f"{run_result.returncode}."
+                            )
+                        )
                     ),
                 )
 
