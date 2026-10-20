@@ -3,6 +3,8 @@ from typing import Any
 
 from src.core.models import TestCase, TestResult
 from src.core.targeted_generator import generate_targeted_inputs
+from src.core.invalid_input_generator import generate_invalid_inputs
+from src.core.fuzz_generator import generate_fuzz_inputs
 from src.languages.python.adapter import PythonAdapter
 from src.coverage.coverage_analyzer import analyze_branch_coverage
 
@@ -10,21 +12,23 @@ from src.coverage.coverage_analyzer import analyze_branch_coverage
 def run_python_test_suite(
     source_code: str,
     max_cases: int = 100,
+    include_invalid_inputs: bool = False,
+    include_fuzz_inputs: bool = False,
 ) -> dict[str, Any]:
-    """Generate and execute targeted tests for supported Python conditions."""
+    """Generate and execute targeted, invalid-input, and fuzz tests."""
 
     if max_cases < 1:
         raise ValueError("max_cases must be at least 1")
 
     adapter = PythonAdapter()
-
-    # Parse and analyze the supplied program.
     adapter.parse(source_code)
     conditions = adapter.analyze(source_code)
 
-    # Do not generate or execute an empty-input test when no
-    # supported conditions exist.
-    if not conditions:
+    if (
+        not conditions
+        and not include_invalid_inputs
+        and not include_fuzz_inputs
+    ):
         return {
             "results": [],
             "total_tests": 0,
@@ -51,28 +55,71 @@ def run_python_test_suite(
         for condition in conditions
     ]
 
-    input_cases = generate_targeted_inputs(
+    targeted_cases = generate_targeted_inputs(
         condition_data,
         max_cases=max_cases,
     )
 
-    results: list[TestResult] = []
-
-    for inputs in input_cases:
-        test_case = TestCase(
+    input_cases: list[TestCase] = [
+        TestCase(
             inputs=inputs,
-            description="AST-derived targeted test",
+            description="Boundary/targeted test",
         )
-        results.append(adapter.execute(source_code, test_case))
+        for inputs in targeted_cases
+    ]
 
-    # This estimates condition outcomes; it is not authoritative
-    # runtime branch coverage.
-    coverage = analyze_branch_coverage(source_code, input_cases)
+    variable_names = list(
+        dict.fromkeys(condition.variable for condition in conditions)
+    )
+
+    if include_invalid_inputs:
+        remaining = max_cases - len(input_cases)
+
+        if remaining > 0:
+            invalid_cases = generate_invalid_inputs(
+                variable_names,
+                max_cases=remaining,
+            )
+
+            input_cases.extend(
+                TestCase(
+                    inputs=case,
+                    description="Invalid-input candidate",
+                )
+                for case in invalid_cases
+            )
+
+    if include_fuzz_inputs:
+        remaining = max_cases - len(input_cases)
+
+        if remaining > 0:
+            fuzz_cases = generate_fuzz_inputs(
+                variable_names,
+                max_cases=remaining,
+            )
+
+            input_cases.extend(
+                TestCase(
+                    inputs=case,
+                    description="Fuzz test candidate",
+                )
+                for case in fuzz_cases
+            )
+
+    results: list[TestResult] = [
+        adapter.execute(source_code, test_case)
+        for test_case in input_cases
+    ]
+
+    coverage = analyze_branch_coverage(
+        source_code,
+        [test_case.inputs for test_case in input_cases],
+    )
 
     if not input_cases:
         message = (
-            "Conditions were detected, but no usable test inputs "
-            "could be generated."
+            "No usable test inputs could be generated. "
+            "Supported conditions or input variables may be required."
         )
     else:
         message = None

@@ -1,8 +1,9 @@
-
 import shutil
 import unittest
 
 from src.core.multi_language_runner import run_test_suite
+from src.core.models import TestResult
+from src.core.result_verifier import classify_execution, verify_output
 
 
 class TestMultiLanguageRunner(unittest.TestCase):
@@ -136,6 +137,48 @@ int main(int argc, char *argv[]) {
 
         self.assertIn("Adult", outputs)
         self.assertIn("Minor", outputs)
+
+    def test_execution_error_classification(self):
+        cases = [
+            ("ValueError: invalid literal", "invalid_input_error"),
+            ("EOFError: No more input", "missing_input_error"),
+            ("Execution timed out after 3 seconds", "timeout"),
+            ("Invalid Python syntax: invalid syntax", "syntax_error"),
+            ("RuntimeError: unexpected failure", "execution_error"),
+        ]
+
+        for error, expected in cases:
+            with self.subTest(error=error):
+                result = TestResult(
+                    inputs={},
+                    executed=False,
+                    error=error,
+                )
+                self.assertEqual(
+                    classify_execution(result),
+                    expected,
+                )
+
+    def test_output_verification_preserves_pass_fail_behavior(self):
+        passing = TestResult(
+            inputs={},
+            executed=True,
+            output="Adult\n",
+        )
+        failing = TestResult(
+            inputs={},
+            executed=True,
+            output="Minor\n",
+        )
+
+        self.assertEqual(
+            verify_output(passing, "Adult").correctness,
+            "passed",
+        )
+        self.assertEqual(
+            verify_output(failing, "Adult").correctness,
+            "failed",
+        )
 
 
 if __name__ == "__main__":
