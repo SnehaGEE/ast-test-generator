@@ -3,6 +3,7 @@ from typing import Any
 
 from src.core.models import TestCase, TestResult
 from src.core.targeted_generator import generate_targeted_inputs
+from src.coverage.coverage_analyzer import analyze_branch_coverage
 from src.languages.python.adapter import PythonAdapter
 from src.languages.java.adapter import JavaAdapter
 from src.languages.c.adapter import CAdapter
@@ -38,16 +39,25 @@ def run_test_suite(
     conditions = adapter.analyze(source_code)
 
     if not conditions:
+        if language == "python":
+            coverage = analyze_branch_coverage(source_code, [])
+        else:
+            coverage = {
+                "success": False,
+                "error": (
+                    f"Runtime branch coverage is not yet measured "
+                    f"for {language}."
+                ),
+                "branches": [],
+                "branch_coverage_percent": None,
+            }
+
         return {
             "results": [],
             "total_tests": 0,
             "successful_executions": 0,
             "failed_executions": 0,
-            "coverage": {
-                "covered": 0,
-                "total": 0,
-                "percentage": 0.0,
-            },
+            "coverage": coverage,
             "message": (
                 "No supported conditions were detected; "
                 "no targeted tests were generated."
@@ -78,6 +88,22 @@ def run_test_suite(
         )
         results.append(adapter.execute(source_code, test_case))
 
+    if language == "python":
+        coverage = analyze_branch_coverage(
+            source_code,
+            input_cases,
+        )
+    else:
+        coverage = {
+            "success": False,
+            "error": (
+                f"Runtime branch coverage is not yet measured "
+                f"for {language}."
+            ),
+            "branches": [],
+            "branch_coverage_percent": None,
+        }
+
     return {
         "results": results,
         "total_tests": len(results),
@@ -87,13 +113,12 @@ def run_test_suite(
         "failed_executions": sum(
             not result.executed for result in results
         ),
-        "coverage": {
-            "covered": 0,
-            "total": len(conditions),
-            "percentage": 0.0,
-        },
+        "coverage": coverage,
         "message": (
-            "Execution completed. Runtime branch coverage "
-            "has not been measured by this runner."
+            None
+            if language == "python" and coverage["success"]
+            else coverage.get("error")
+            if language != "python"
+            else coverage.get("error")
         ),
     }

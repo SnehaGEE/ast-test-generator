@@ -39,6 +39,31 @@ else:
         self.assertIn("Adult", outputs)
         self.assertIn("Minor", outputs)
 
+    def test_python_runner_reports_branch_coverage(self):
+        source = """
+age = int(input("Age: "))
+if age >= 18:
+    print("Adult")
+else:
+    print("Minor")
+"""
+        result = run_test_suite(source, language="python")
+        coverage = result["coverage"]
+
+        self.assertTrue(coverage["success"])
+        self.assertIn("branch_coverage_percent", coverage)
+        self.assertGreaterEqual(
+            coverage["branch_coverage_percent"], 0
+        )
+        self.assertLessEqual(
+            coverage["branch_coverage_percent"], 100
+        )
+        self.assertTrue(coverage["branches"])
+
+        branch = coverage["branches"][0]
+        self.assertTrue(branch["true_covered"])
+        self.assertTrue(branch["false_covered"])
+
     @unittest.skipUnless(
         shutil.which("javac") and shutil.which("java"),
         "Java JDK is not installed",

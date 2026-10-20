@@ -61,6 +61,28 @@ class TestBoundaryGenerator(unittest.TestCase):
         self.assertIn(18, values)
         self.assertGreater(values[2], 18)
 
+    
+    def test_all_comparison_operators_generate_three_candidates(self):
+        cases = [
+            ("<", 10),
+            ("<=", 10),
+            (">", 10),
+            (">=", 10),
+            ("==", 10),
+            ("!=", 10),
+        ]
+
+        for operator, constant in cases:
+            with self.subTest(operator=operator):
+                values = generate_boundary_tests({
+                    "constant": constant,
+                    "operator": operator,
+                })
+
+                self.assertEqual(len(values), 3)
+                self.assertEqual(len(set(values)), 3)
+                self.assertIn(constant, values)
+
 
 if __name__ == "__main__":
     unittest.main()
