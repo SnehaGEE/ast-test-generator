@@ -61,6 +61,39 @@ else:
         self.assertGreater(result["line_coverage_percent"], 0)
         self.assertTrue(result["executed_lines"])
 
+    def test_branch_not_counted_when_execution_fails_before_if(self):
+        source = """
+value = 1 / 0
+if value > 5:
+    print("high")
+else:
+    print("low")
+"""
+        result = analyze_branch_coverage(source, [{}])
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["branch_coverage_percent"], 0.0)
+        self.assertEqual(
+            result["branches"][0]["missing"],
+            ["true", "false"],
+        )
+
+    def test_unreachable_branch_is_not_reported_as_covered(self):
+        source = """
+if flag:
+    print("enabled")
+else:
+    print("disabled")
+"""
+        result = analyze_branch_coverage(source, [{"flag": True}])
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["branch_coverage_percent"], 50.0)
+        self.assertEqual(
+            result["branches"][0]["missing"],
+            ["false"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
