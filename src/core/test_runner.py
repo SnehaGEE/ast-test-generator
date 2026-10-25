@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from src.core.models import TestCase, TestResult
@@ -7,6 +6,31 @@ from src.core.invalid_input_generator import generate_invalid_inputs
 from src.core.fuzz_generator import generate_fuzz_inputs
 from src.languages.python.adapter import PythonAdapter
 from src.coverage.coverage_analyzer import analyze_branch_coverage
+from src.coverage.unsupported_syntax import find_unsupported_constructs
+
+
+def _describe_unsupported(unsupported: list[dict[str, Any]]) -> str | None:
+    """Build a user-facing note about constructs coverage ignores."""
+    if not unsupported:
+        return None
+
+    parts: list[str] = []
+    for item in unsupported:
+        text = f"{item['construct']} (line {item['line']})"
+        if text not in parts:
+            parts.append(text)
+
+    return (
+        "Branch coverage does not track: "
+        + "; ".join(parts)
+        + ". The percentage covers only if/elif and while conditions."
+    )
+
+
+def _join_messages(*messages: str | None) -> str | None:
+    """Join the non-empty messages, or return None if there are none."""
+    present = [message for message in messages if message]
+    return " ".join(present) if present else None
 
 
 def run_python_test_suite(
@@ -23,6 +47,8 @@ def run_python_test_suite(
     adapter = PythonAdapter()
     adapter.parse(source_code)
     conditions = adapter.analyze(source_code)
+    unsupported = find_unsupported_constructs(source_code)
+    unsupported_note = _describe_unsupported(unsupported)
 
     if (
         not conditions
@@ -38,10 +64,16 @@ def run_python_test_suite(
                 "covered": 0,
                 "total": 0,
                 "percentage": 0.0,
+                "success": True,
+                "error": None,
+                "branches": [],
+                "branch_coverage_percent": 0.0,
+                "unsupported": unsupported,
             },
-            "message": (
+            "message": _join_messages(
                 "No supported conditions were detected; "
-                "no targeted tests were generated."
+                "no targeted tests were generated.",
+                unsupported_note,
             ),
         }
 
@@ -115,14 +147,15 @@ def run_python_test_suite(
         source_code,
         [test_case.inputs for test_case in input_cases],
     )
+    coverage["unsupported"] = unsupported
 
     if not input_cases:
-        message = (
+        base_message = (
             "No usable test inputs could be generated. "
             "Supported conditions or input variables may be required."
         )
     else:
-        message = None
+        base_message = None
 
     return {
         "results": results,
@@ -134,5 +167,5 @@ def run_python_test_suite(
             not result.executed for result in results
         ),
         "coverage": coverage,
-        "message": message,
+        "message": _join_messages(base_message, unsupported_note),
     }

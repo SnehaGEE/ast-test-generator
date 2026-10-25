@@ -18,6 +18,8 @@ class Condition:
 class TestCase:
     """A generated test case for a program."""
 
+    __test__ = False
+
     inputs: dict[str, Any]
     description: str = ""
 
@@ -25,6 +27,8 @@ class TestCase:
 @dataclass
 class TestResult:
     """The outcome of executing and checking a test case."""
+
+    __test__ = False
 
     inputs: dict[str, Any]
     executed: bool
