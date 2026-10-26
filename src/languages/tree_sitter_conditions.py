@@ -21,6 +21,27 @@ REVERSED_OPERATORS = {
 # condition field "condition".
 CONDITION_STATEMENTS = {"if_statement", "while_statement", "do_statement"}
 
+# C: switch_statement; Java: switch_expression (statement or expression).
+SWITCH_STATEMENTS = {"switch_statement", "switch_expression"}
+
+
+def _case_values(body):
+    """The value nodes of a switch body's case labels, in order.
+
+    C: `case 2:` (case_statement.value). Java: `case 2:` and `case 4, 5 ->`
+    (switch_label children). `default` has no value. Nested switches are
+    left to their own visit.
+    """
+    for child in body.named_children:
+        if child.type == "case_statement":
+            value = child.child_by_field_name("value")
+            if value is not None:
+                yield value
+        elif child.type in {"switch_block_statement_group", "switch_rule"}:
+            for label in child.named_children:
+                if label.type == "switch_label":
+                    yield from label.named_children
+
 
 def extract_conditions(
     root,
@@ -71,6 +92,23 @@ def extract_conditions(
         for child in node.named_children:
             comparisons(child, line)
 
+    def switch_cases(node):
+        # `switch (choice) { case 2: ... }` means `choice == 2`.
+        condition = node.child_by_field_name("condition")
+        body = node.child_by_field_name("body")
+        subjects = [
+            child
+            for child in (condition.named_children if condition else [])
+            if child.type != "comment"
+        ]
+        if body is None or len(subjects) != 1 or subjects[0].type != "identifier":
+            return
+
+        for value_node in _case_values(body):
+            value = numeric_value(value_node)
+            if value is not None:
+                add(subjects[0], "==", value, value_node.start_point.row + 1)
+
     def visit(node):
         if node.type in CONDITION_STATEMENTS:
             condition = node.child_by_field_name("condition")
@@ -78,6 +116,8 @@ def extract_conditions(
                 # Like Python, report the statement's line, which is
                 # also the line its branch coverage is reported on.
                 comparisons(condition, node.start_point.row + 1)
+        elif node.type in SWITCH_STATEMENTS:
+            switch_cases(node)
 
         for child in node.children:
             visit(child)

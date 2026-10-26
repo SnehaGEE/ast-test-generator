@@ -45,6 +45,19 @@ def _as_constant(node: ast.expr) -> ast.expr:
     return node
 
 
+def _match_values(pattern: ast.pattern) -> list[ast.expr]:
+    """Literal values a case pattern compares against: `case 2 | 3:`."""
+    if isinstance(pattern, ast.MatchValue):
+        return [pattern.value]
+    if isinstance(pattern, ast.MatchOr):
+        return [
+            value
+            for option in pattern.patterns
+            for value in _match_values(option)
+        ]
+    return []
+
+
 class ConditionAnalyzer(ast.NodeVisitor):
     """Find supported variable-to-constant comparisons in Python."""
 
@@ -58,6 +71,21 @@ class ConditionAnalyzer(ast.NodeVisitor):
 
     def visit_While(self, node: ast.While) -> None:
         self._extract_comparisons(node.test, node.lineno)
+        self.generic_visit(node)
+
+    def visit_Match(self, node: ast.Match) -> None:
+        # `match choice: case 2:` means `choice == 2`.
+        if isinstance(node.subject, ast.Name):
+            for case in node.cases:
+                for value in _match_values(case.pattern):
+                    constant = _as_constant(value)
+                    if isinstance(constant, ast.Constant):
+                        self._add_condition(
+                            node.subject.id,
+                            "==",
+                            constant.value,
+                            case.pattern.lineno,
+                        )
         self.generic_visit(node)
 
     def _add_condition(

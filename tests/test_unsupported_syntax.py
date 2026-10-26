@@ -43,8 +43,13 @@ def test_plain_if_and_while_not_flagged():
     assert _constructs(source) == []
 
 
+# Cases of `match name:` are analyzed (see test_switch_cases.py), so a
+# subject that is an expression keeps this program untestable.
+MATCH_ON_EXPRESSION = MATCH.replace("match cmd:", "match cmd.lower():")
+
+
 def test_match_program_reports_unsupported_and_keeps_old_keys():
-    result = run_python_test_suite(MATCH, max_cases=20)
+    result = run_python_test_suite(MATCH_ON_EXPRESSION, max_cases=20)
 
     assert result["total_tests"] == 0
     assert result["results"] == []

@@ -3,8 +3,10 @@ fastapi>=0.115
 uvicorn>=0.30
 pydantic>=2.7
 
-# Java and C parsing
-tree-sitter>=0.23
+# Java and C parsing.
+# tree-sitter 0.26.0 corrupts memory when reading some C syntax trees
+# (wrong nodes, then a crash); 0.25.2 is stable with these grammars.
+tree-sitter==0.25.2
 tree-sitter-java>=0.23
 tree-sitter-c>=0.23
 
