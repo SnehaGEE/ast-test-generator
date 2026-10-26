@@ -1131,3 +1131,27 @@ input:disabled {
     flex: 1;
   }
 }
+.status-dot.offline {
+  background: #c25454;
+}
+
+.status-dot.checking {
+  background: #c9a13b;
+}
+
+.suggestions {
+  margin-top: 22px;
+}
+
+.suggestions h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  color: #26364b;
+  font-size: 14px;
+}
+
+.suggestions p {
+  margin: 0 0 12px;
+}

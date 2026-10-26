@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import {
   Activity,
@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Gauge,
   Info,
+  Lightbulb,
   Play,
   Settings2,
   Terminal,
@@ -19,7 +20,10 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_URL = "http://127.0.0.1:8000/api/run";
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = `${API_BASE}/api/run`;
+const HEALTH_URL = `${API_BASE}/api/health`;
+const HEALTH_INTERVAL_MS = 15000;
 const REQUEST_TIMEOUT_MS = 180000;
 const MIN_CASES = 1;
 const MAX_CASES = 100;
@@ -155,7 +159,34 @@ function App() {
   const [results, setResults] = useState(null);
   const [running, setRunning] = useState(false);
   const [apiError, setApiError] = useState("");
+  const [backendUp, setBackendUp] = useState(null);
   const abortRef = useRef(null);
+  const resultsRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkHealth() {
+      try {
+        const response = await fetch(HEALTH_URL);
+        if (active) setBackendUp(response.ok);
+      } catch {
+        if (active) setBackendUp(false);
+      }
+    }
+
+    checkHealth();
+    const timer = setInterval(checkHealth, HEALTH_INTERVAL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  function showTab(tab) {
+    setActiveTab(tab);
+    resultsRef.current?.scrollIntoView({ behavior: "smooth" });
+  }
 
   const maxCases = parseMaxCases(maxCasesText);
   const maxCasesValid = maxCases !== null;
@@ -263,6 +294,7 @@ function App() {
   const coveragePercent = coverage.branch_coverage_percent;
   const branches = coverage.branches ?? [];
   const unsupportedText = describeUnsupported(coverage.unsupported);
+  const suggestions = coverage.suggestions ?? [];
 
   // Prefer a useful backend message when no test cases are generated.
   const noTestsMessage =
@@ -281,40 +313,42 @@ function App() {
 
         <div className="sidebar-section-label">WORKSPACE</div>
 
-        <button className="nav-item active">
+        <button
+          className="nav-item active"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        >
           <Code2 size={18} />
           <span>Code workspace</span>
         </button>
 
-        <button
-          className="nav-item"
-          onClick={() => setActiveTab("tests")}
-        >
+        <button className="nav-item" onClick={() => showTab("tests")}>
           <FlaskConical size={18} />
           <span>Test results</span>
         </button>
 
-        <button
-          className="nav-item"
-          onClick={() => setActiveTab("coverage")}
-        >
+        <button className="nav-item" onClick={() => showTab("coverage")}>
           <Gauge size={18} />
           <span>Coverage report</span>
         </button>
 
         <div className="sidebar-bottom">
           <div className="backend-status">
-            <span className="status-dot" />
+            <span
+              className={`status-dot ${
+                backendUp === false ? "offline" : backendUp ? "" : "checking"
+              }`}
+            />
             <div>
-              <strong>Local workspace</strong>
-              <small>Development mode</small>
+              <strong>
+                {backendUp === null
+                  ? "Checking backend..."
+                  : backendUp
+                    ? "Backend connected"
+                    : "Backend offline"}
+              </strong>
+              <small>{API_BASE.replace(/^https?:\/\//, "")}</small>
             </div>
           </div>
-
-          <button className="nav-item">
-            <Settings2 size={18} />
-            <span>Settings</span>
-          </button>
         </div>
       </aside>
 
@@ -547,7 +581,7 @@ function App() {
           </div>
         )}
 
-        <section className="results-section">
+        <section className="results-section" ref={resultsRef}>
           <div className="results-heading">
             <div>
               <div className="eyebrow">ANALYSIS REPORT</div>
@@ -785,6 +819,59 @@ function App() {
                               ))}
                             </tbody>
                           </table>
+                        </div>
+                      )}
+
+                      {suggestions.length > 0 && (
+                        <div className="suggestions">
+                          <h3>
+                            <Lightbulb size={16} /> Suggested tests for
+                            missing outcomes
+                          </h3>
+                          <p>
+                            Each suggestion was run once. "Verified" means
+                            it really produced the missing outcome; an
+                            unverified one needs other inputs changed too,
+                            for example to reach a nested condition.
+                          </p>
+                          <div className="table-scroll">
+                            <table className="results-table">
+                              <thead>
+                                <tr>
+                                  <th>Line</th>
+                                  <th>Missing outcome</th>
+                                  <th>Suggested inputs</th>
+                                  <th>Check</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {suggestions.map((item, index) => (
+                                  <tr key={index}>
+                                    <td className="test-number">
+                                      {item.line}
+                                    </td>
+                                    <td>{item.target_outcome}</td>
+                                    <td>
+                                      <code>{formatInputs(item.inputs)}</code>
+                                    </td>
+                                    <td>
+                                      <span
+                                        className={
+                                          item.verified
+                                            ? "outcome-flag seen"
+                                            : "outcome-flag missed"
+                                        }
+                                      >
+                                        {item.verified
+                                          ? "✓ verified"
+                                          : "✗ not reached"}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       )}
 
