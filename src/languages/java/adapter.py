@@ -7,7 +7,7 @@ from pathlib import Path
 import tree_sitter
 import tree_sitter_java
 
-from src.core.input_order import reorder
+from src.core.input_order import answer_inputs
 from src.languages.branch_probes import Branch, insert_probes
 from src.languages.compiled import (
     COMPILE_TIMEOUT_SECONDS,
@@ -46,6 +46,28 @@ final class __BranchLabProbe {
     }
 }
 """
+
+# What a read method returns, before any parse call around it.
+READ_KINDS = {
+    "nextInt": "int",
+    "nextLong": "int",
+    "nextShort": "int",
+    "nextByte": "int",
+    "nextDouble": "float",
+    "nextFloat": "float",
+    "nextBoolean": "bool",
+}
+
+# Parse calls that turn a line of text into a value.
+PARSE_KINDS = {
+    "parseInt": "int",
+    "parseLong": "int",
+    "parseShort": "int",
+    "parseByte": "int",
+    "parseDouble": "float",
+    "parseFloat": "float",
+    "parseBoolean": "bool",
+}
 
 # Scanner and BufferedReader methods that consume one value from stdin.
 READ_METHODS = {
@@ -99,6 +121,28 @@ def _numeric_value(node, source_bytes: bytes):
     return None
 
 
+def _read_kind(node, source_bytes: bytes) -> str:
+    """Kind of value a read call expects.
+
+    in.nextInt() -> "int"; Integer.parseInt(in.readLine()) -> "int";
+    in.next() or in.readLine() on their own -> "str".
+    """
+    current = node
+    while current is not None and current.type == "method_invocation":
+        method = current.child_by_field_name("name")
+        name = node_text(method, source_bytes) if method is not None else ""
+        if name in PARSE_KINDS:
+            return PARSE_KINDS[name]
+        if current is node and name in READ_KINDS:
+            return READ_KINDS[name]
+        # Step out through .trim() and through being a call's argument.
+        parent = current.parent
+        if parent is not None and parent.type == "argument_list":
+            parent = parent.parent
+        current = parent
+    return "str"
+
+
 class JavaAdapter(CompiledLanguageAdapter):
     """Java adapter using Tree-sitter for syntax parsing."""
 
@@ -139,7 +183,7 @@ class JavaAdapter(CompiledLanguageAdapter):
         source_bytes = source_code.encode("utf-8")
         tree = self.parser.parse(source_bytes)
         plan = InputPlan()
-        reads: list[tuple[int, str]] = []
+        reads: list[tuple[int, str, str]] = []
         args_name = "args"
 
         def find_args_name(node):
@@ -169,7 +213,13 @@ class JavaAdapter(CompiledLanguageAdapter):
                 ):
                     name = assigned_name(node, source_bytes)
                     if name:
-                        reads.append((node.start_byte, name))
+                        reads.append(
+                            (
+                                node.start_byte,
+                                name,
+                                _read_kind(node, source_bytes),
+                            )
+                        )
 
             elif node.type == "array_access":
                 array = node.child_by_field_name("array")
@@ -191,7 +241,10 @@ class JavaAdapter(CompiledLanguageAdapter):
 
         find_args_name(tree.root_node)
         visit(tree.root_node)
-        plan.read_order = list(dict.fromkeys(name for _, name in sorted(reads)))
+        for _, name, kind in sorted(reads):
+            if name not in plan.kinds:
+                plan.read_order.append(name)
+                plan.kinds[name] = kind
         return plan
 
     def missing_tools(self) -> str | None:
@@ -265,5 +318,9 @@ class JavaAdapter(CompiledLanguageAdapter):
                 if name in test_case.inputs:
                     arguments[position] = str(test_case.inputs[name])
 
-        stdin = stdin_text(reorder(test_case.inputs, plan.read_order).values())
+        stdin = stdin_text(
+            answer_inputs(
+                test_case.inputs, plan.read_order, plan.kinds
+            ).values()
+        )
         return ["java", *properties, "-cp", temp_dir, target, *arguments], stdin

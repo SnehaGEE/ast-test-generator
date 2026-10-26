@@ -5,7 +5,7 @@ import sys
 import time
 from typing import Any
 
-from src.core.input_order import python_read_order, reorder
+from src.core.input_order import python_answers
 
 # Guards against generated inputs that make a while loop run forever.
 MAX_LOOP_EVALUATIONS = 100_000
@@ -25,7 +25,7 @@ class _LimitExceeded(BaseException):
 
 def _make_input(inputs: dict[str, Any], source_code: str):
     """Provide input() values in the order the program reads them."""
-    ordered = reorder(inputs, python_read_order(source_code))
+    ordered = python_answers(source_code, inputs)
     values = iter(str(value) for value in ordered.values())
 
     def fake_input(prompt: str = "") -> str:

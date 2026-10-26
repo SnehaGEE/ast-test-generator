@@ -1,5 +1,6 @@
 
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 import tree_sitter
 import tree_sitter_c
 
-from src.core.input_order import reorder
+from src.core.input_order import answer_inputs
 from src.languages.branch_probes import Branch, insert_probes
 from src.languages.compiled import (
     COMPILE_TIMEOUT_SECONDS,
@@ -45,6 +46,30 @@ static int __branchlab_probe(int id, int outcome)
 }
 #line 1
 """
+
+
+# One scanf conversion: optional '*' (assignment suppressed), width,
+# length modifier, then the conversion letter or a [set].
+_SCANF_CONVERSION = re.compile(
+    r"%(\*?)\d*(?:hh|h|ll|l|L|j|z|t)?([diouxXaAeEfFgGscp]|\[\^?\]?[^\]]*\])"
+)
+
+
+def _scanf_kinds(format_literal: str) -> list[str]:
+    """Kinds of the values a scanf format reads: "%d %f" -> int, float."""
+    kinds = []
+    for suppressed, conversion in _SCANF_CONVERSION.findall(
+        format_literal.replace("%%", "")
+    ):
+        if suppressed:
+            continue
+        if conversion in "diouxXp":
+            kinds.append("int")
+        elif conversion in "aAeEfFgG":
+            kinds.append("float")
+        else:
+            kinds.append("str")
+    return kinds
 
 
 def _parse_c_number(text: str):
@@ -132,7 +157,7 @@ class CAdapter(CompiledLanguageAdapter):
         source_bytes = source_code.encode("utf-8")
         tree = self.parser.parse(source_bytes)
         plan = InputPlan()
-        reads: list[tuple[int, str]] = []
+        reads: list[tuple[int, str, str]] = []
 
         def visit(node):
             if node.type == "call_expression":
@@ -144,18 +169,21 @@ class CAdapter(CompiledLanguageAdapter):
                     and arguments is not None
                     and node_text(function, source_bytes) == "scanf"
                 ):
-                    # Skip the format string; collect &name arguments.
-                    for argument in arguments.named_children[1:]:
-                        target = argument.child_by_field_name("argument")
-                        if (
-                            argument.type == "pointer_expression"
-                            and target is not None
-                            and target.type == "identifier"
-                        ):
+                    # Pair each conversion in the format string with its
+                    # argument: &name for numbers, name for char arrays.
+                    format_node, *targets = arguments.named_children
+                    kinds = _scanf_kinds(node_text(format_node, source_bytes))
+                    for argument, kind in zip(targets, kinds):
+                        if argument.type == "pointer_expression":
+                            target = argument.child_by_field_name("argument")
+                        else:
+                            target = argument
+                        if target is not None and target.type == "identifier":
                             reads.append(
                                 (
                                     argument.start_byte,
                                     node_text(target, source_bytes),
+                                    kind,
                                 )
                             )
 
@@ -181,7 +209,10 @@ class CAdapter(CompiledLanguageAdapter):
                 visit(child)
 
         visit(tree.root_node)
-        plan.read_order = list(dict.fromkeys(name for _, name in sorted(reads)))
+        for _, name, kind in sorted(reads):
+            if name not in plan.kinds:
+                plan.read_order.append(name)
+                plan.kinds[name] = kind
         return plan
 
     def missing_tools(self) -> str | None:
@@ -261,5 +292,7 @@ class CAdapter(CompiledLanguageAdapter):
                 "0"
             ] * (wanted - len(arguments))
 
-        stdin = stdin_text(reorder(values, plan.read_order).values())
+        stdin = stdin_text(
+            answer_inputs(values, plan.read_order, plan.kinds).values()
+        )
         return [str(target), *arguments], stdin

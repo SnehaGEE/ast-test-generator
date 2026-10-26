@@ -1,7 +1,7 @@
 
 import ast
 
-from src.core.input_order import python_read_order, reorder
+from src.core.input_order import python_answers
 from src.core.interfaces import LanguageAdapter
 from src.core.models import Condition, TestCase, TestResult
 from src.parser.analyzer.condition_analyzer import analyze_source
@@ -62,7 +62,7 @@ class PythonAdapter(LanguageAdapter):
     ) -> TestResult:
         """Execute a test case and normalize its result."""
         # The worker answers input() calls in dict order.
-        ordered = reorder(test_case.inputs, python_read_order(source_code))
+        ordered = python_answers(source_code, test_case.inputs)
         result = execute_test_case(source_code, ordered)
 
         return TestResult(

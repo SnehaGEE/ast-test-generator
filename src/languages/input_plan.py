@@ -16,10 +16,12 @@ class InputPlan:
     """Where a program reads each variable from.
 
     read_order: variables read from standard input, in source order.
+    kinds: what each stdin read expects: "int", "float", "str" or "bool".
     positions: command-line index per variable (argv[1] -> 1, args[0] -> 0).
     """
 
     read_order: list[str] = field(default_factory=list)
+    kinds: dict[str, str] = field(default_factory=dict)
     positions: dict[str, int] = field(default_factory=dict)
 
 
