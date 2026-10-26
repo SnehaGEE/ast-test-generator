@@ -3,7 +3,11 @@ from typing import Any
 
 from src.core.models import TestCase, TestResult
 from src.core.targeted_generator import generate_targeted_inputs
-from src.core.test_runner import run_python_test_suite
+from src.core.test_runner import (
+    _describe_unsupported,
+    _join_messages,
+    run_python_test_suite,
+)
 from src.languages.java.adapter import JavaAdapter
 from src.languages.c.adapter import CAdapter
 
@@ -15,17 +19,8 @@ COMPILED_ADAPTERS = {
 
 SUPPORTED_LANGUAGES = {"python", *COMPILED_ADAPTERS}
 
-
-def _not_measured(language: str) -> dict[str, Any]:
-    return {
-        "success": False,
-        "error": (
-            f"Runtime branch coverage is not yet measured "
-            f"for {language}."
-        ),
-        "branches": [],
-        "branch_coverage_percent": None,
-    }
+# Which statements the coverage percentage counts, per language.
+TRACKED = {"java": "if/else if and while", "c": "if/else if and while"}
 
 
 def run_test_suite(
@@ -59,7 +54,7 @@ def run_test_suite(
     adapter = COMPILED_ADAPTERS[language]()
     adapter.parse(source_code)
     conditions = adapter.analyze(source_code)
-    coverage = _not_measured(language)
+    unsupported = adapter.untracked(source_code)
 
     messages = []
     if include_invalid_inputs or include_fuzz_inputs:
@@ -73,13 +68,18 @@ def run_test_suite(
             "total_tests": 0,
             "successful_executions": 0,
             "failed_executions": 0,
-            "coverage": coverage,
-            "message": " ".join(
-                [
-                    "No supported conditions were detected; "
-                    "no targeted tests were generated.",
-                    *messages,
-                ]
+            "coverage": {
+                "success": True,
+                "error": None,
+                "branches": [],
+                "branch_coverage_percent": None,
+                "unsupported": unsupported,
+            },
+            "message": _join_messages(
+                "No supported conditions were detected; "
+                "no targeted tests were generated.",
+                _describe_unsupported(unsupported, TRACKED[language]),
+                *messages,
             ),
         }
 
@@ -105,11 +105,18 @@ def run_test_suite(
         )
         for inputs in input_cases
     ]
-    results: list[TestResult] = adapter.execute_many(
-        source_code, test_cases
-    )
-    for result in results:
-        result.category = "targeted"
+
+    results: list[TestResult] = []
+    hits: set[tuple[int, bool]] = set()
+    with adapter.compile(source_code) as program:
+        for case in test_cases:
+            result, reached = program.run(case)
+            result.category = "targeted"
+            results.append(result)
+            hits |= reached
+        coverage = program.coverage(hits)
+
+    coverage["unsupported"] = unsupported
 
     return {
         "results": results,
@@ -121,5 +128,9 @@ def run_test_suite(
             not result.executed for result in results
         ),
         "coverage": coverage,
-        "message": " ".join([coverage["error"], *messages]),
+        "message": _join_messages(
+            coverage.get("error"),
+            _describe_unsupported(unsupported, TRACKED[language]),
+            *messages,
+        ),
     }

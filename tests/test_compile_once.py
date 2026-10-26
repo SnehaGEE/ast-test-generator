@@ -107,7 +107,9 @@ def test_c_compile_error_is_reported_on_every_test(compiler_calls):
     result = run_test_suite(C_BROKEN, language="c", max_cases=20)
 
     assert result["total_tests"] > 1
-    assert compiler_calls.count("gcc") == 1
+    # The probed build fails, then one plain build reports the program's
+    # own errors. Still once per run, not once per test.
+    assert compiler_calls.count("gcc") == 2
     for test in result["results"]:
         assert test.executed is False
         assert "undefined_name" in test.error

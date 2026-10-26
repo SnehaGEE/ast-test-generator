@@ -2,14 +2,17 @@
 
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import tree_sitter
 import tree_sitter_c
 
 from src.core.input_order import reorder
-from src.core.interfaces import LanguageAdapter
+from src.languages.branch_probes import Branch, insert_probes
+from src.languages.compiled import (
+    COMPILE_TIMEOUT_SECONDS,
+    CompiledLanguageAdapter,
+)
 from src.languages.input_plan import (
     InputPlan,
     assigned_name,
@@ -17,7 +20,31 @@ from src.languages.input_plan import (
     stdin_text,
 )
 from src.languages.tree_sitter_conditions import extract_conditions
-from src.core.models import Condition, TestCase, TestResult
+from src.core.models import Condition, TestCase
+
+
+# Records each condition outcome the first time it happens, so outcomes
+# reached before exit(), a crash or a timeout are kept.
+PROBE_PRELUDE = r"""#include <stdio.h>
+#include <stdlib.h>
+static int __branchlab_seen[BRANCH_COUNT][2];
+static int __branchlab_probe(int id, int outcome)
+{
+    if (!__branchlab_seen[id][outcome]) {
+        const char *path = getenv("BRANCHLAB_PROBE_FILE");
+        __branchlab_seen[id][outcome] = 1;
+        if (path != NULL) {
+            FILE *file = fopen(path, "a");
+            if (file != NULL) {
+                fprintf(file, "%d %d\n", id, outcome);
+                fclose(file);
+            }
+        }
+    }
+    return outcome;
+}
+#line 1
+"""
 
 
 def _parse_c_number(text: str):
@@ -65,8 +92,13 @@ def _numeric_value(node, source_bytes: bytes):
     return None if value is None else sign * value
 
 
-class CAdapter(LanguageAdapter):
+class CAdapter(CompiledLanguageAdapter):
     """C adapter using Tree-sitter for syntax parsing."""
+
+    display_name = "C"
+    exit_label = "C program"
+    timeout_message = "C program execution timed out."
+    temp_prefix = "ast_test_c_"
 
     def __init__(self):
         self.language = tree_sitter.Language(tree_sitter_c.language())
@@ -152,68 +184,55 @@ class CAdapter(LanguageAdapter):
         plan.read_order = list(dict.fromkeys(name for _, name in sorted(reads)))
         return plan
 
-    def execute(self, source_code: str, test_case: TestCase) -> TestResult:
-        """Compile and execute C source with test inputs as command-line arguments."""
-        return self.execute_many(source_code, [test_case])[0]
-
-    def execute_many(
-        self,
-        source_code: str,
-        test_cases: list[TestCase],
-    ) -> list[TestResult]:
-        """Compile C source once, then run every test case against it."""
-
-        def fail_all(error: str) -> list[TestResult]:
-            return [
-                TestResult(inputs=case.inputs, executed=False, error=error)
-                for case in test_cases
-            ]
-
+    def missing_tools(self) -> str | None:
         if shutil.which("gcc") is None:
-            return fail_all("GCC must be available on PATH.")
+            return "GCC must be available on PATH."
+        return None
 
-        try:
-            with tempfile.TemporaryDirectory(prefix="ast_test_c_") as temp_dir:
-                source_path = Path(temp_dir) / "program.c"
-                executable_path = Path(temp_dir) / "program.exe"
+    def build(self, temp_dir: str, source_code: str):
+        source_path = Path(temp_dir) / "program.c"
+        executable_path = Path(temp_dir) / "program.exe"
+        source_path.write_text(source_code, encoding="utf-8")
 
-                source_path.write_text(source_code, encoding="utf-8")
+        compile_result = subprocess.run(
+            ["gcc", str(source_path), "-o", str(executable_path)],
+            capture_output=True,
+            text=True,
+            timeout=COMPILE_TIMEOUT_SECONDS,
+            cwd=temp_dir,
+        )
 
-                try:
-                    compile_result = subprocess.run(
-                        ["gcc", str(source_path), "-o", str(executable_path)],
-                        capture_output=True,
-                        text=True,
-                        timeout=15,
-                        cwd=temp_dir,
-                    )
-                except subprocess.TimeoutExpired:
-                    return fail_all("C compilation timed out.")
+        if compile_result.returncode != 0:
+            return None, (
+                compile_result.stderr.strip()
+                or compile_result.stdout.strip()
+                or "C compilation failed."
+            )
+        return executable_path, None
 
-                if compile_result.returncode != 0:
-                    return fail_all(
-                        compile_result.stderr.strip()
-                        or compile_result.stdout.strip()
-                        or "C compilation failed."
-                    )
+    def add_probes(self, source_bytes: bytes, branches: list[Branch]) -> str:
+        """Prepend the probe function and wrap every condition.
 
-                plan = self.input_plan(source_code)
-                return [
-                    self._run_case(executable_path, temp_dir, case, plan)
-                    for case in test_cases
-                ]
+        `#line 1` makes compiler messages use the original line numbers.
+        """
+        prelude = PROBE_PRELUDE.replace("BRANCH_COUNT", str(len(branches)))
+        body = insert_probes(
+            source_bytes,
+            branches,
+            lambda branch_id, condition: (
+                f"__branchlab_probe({branch_id}, ({condition}) ? 1 : 0)"
+            ),
+        )
+        return prelude + body
 
-        except OSError as error:
-            return fail_all(f"{type(error).__name__}: {error}")
-
-    def _run_case(
+    def run_command(
         self,
-        executable_path: Path,
+        target,
         temp_dir: str,
         test_case: TestCase,
         plan: InputPlan,
-    ) -> TestResult:
-        """Run an already compiled C program for one test case."""
+    ) -> tuple[list[str], str]:
+        """Pass values as argv entries and on stdin."""
         # argc is not an argument; it is the argument count plus
         # the program name.
         values = {
@@ -242,55 +261,5 @@ class CAdapter(LanguageAdapter):
                 "0"
             ] * (wanted - len(arguments))
 
-        try:
-            run_result = subprocess.run(
-                [str(executable_path), *arguments],
-                input=stdin_text(
-                    reorder(values, plan.read_order).values()
-                ),
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=temp_dir,
-            )
-        except subprocess.TimeoutExpired:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error="C program execution timed out.",
-            )
-        except OSError as error:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error=f"{type(error).__name__}: {error}",
-            )
-
-        return TestResult(
-            inputs=test_case.inputs,
-            executed=run_result.returncode == 0,
-            output=run_result.stdout,
-            error=(
-                run_result.stderr.strip()
-                or (
-                    None
-                    if run_result.returncode == 0
-                    else (
-                        "C program exited with code "
-                        f"{run_result.returncode}."
-                    )
-                )
-            ),
-        )
-
-    def execute_and_verify(
-        self,
-        source_code: str,
-        test_case: TestCase,
-        expected_output: str,
-    ) -> TestResult:
-        """Execute a C test case and verify its output."""
-        from src.core.result_verifier import verify_output
-
-        result = self.execute(source_code, test_case)
-        return verify_output(result, expected_output)
+        stdin = stdin_text(reorder(values, plan.read_order).values())
+        return [str(target), *arguments], stdin

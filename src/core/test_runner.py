@@ -16,7 +16,10 @@ from src.coverage.unsupported_syntax import find_unsupported_constructs
 EXTRA_SHARE_PERCENT = 20
 
 
-def _describe_unsupported(unsupported: list[dict[str, Any]]) -> str | None:
+def _describe_unsupported(
+    unsupported: list[dict[str, Any]],
+    tracked: str = "if/elif and while",
+) -> str | None:
     """Build a user-facing note about constructs coverage ignores."""
     if not unsupported:
         return None
@@ -30,7 +33,7 @@ def _describe_unsupported(unsupported: list[dict[str, Any]]) -> str | None:
     return (
         "Branch coverage does not track: "
         + "; ".join(parts)
-        + ". The percentage covers only if/elif and while conditions."
+        + f". The percentage covers only {tracked} conditions."
     )
 
 

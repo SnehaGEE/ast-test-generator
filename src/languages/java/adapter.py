@@ -2,14 +2,17 @@
 import re
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import tree_sitter
 import tree_sitter_java
 
 from src.core.input_order import reorder
-from src.core.interfaces import LanguageAdapter
+from src.languages.branch_probes import Branch, insert_probes
+from src.languages.compiled import (
+    COMPILE_TIMEOUT_SECONDS,
+    CompiledLanguageAdapter,
+)
 from src.languages.input_plan import (
     InputPlan,
     assigned_name,
@@ -17,8 +20,32 @@ from src.languages.input_plan import (
     stdin_text,
 )
 from src.languages.tree_sitter_conditions import extract_conditions
-from src.core.models import Condition, TestCase, TestResult
+from src.core.models import Condition, TestCase
 
+
+# Records each condition outcome the first time it happens, so outcomes
+# reached before System.exit(), an exception or a timeout are kept.
+PROBE_CLASS = r"""
+
+final class __BranchLabProbe {
+    private static final boolean[][] SEEN = new boolean[BRANCH_COUNT][2];
+
+    static synchronized boolean hit(int id, boolean value) {
+        int outcome = value ? 1 : 0;
+        if (!SEEN[id][outcome]) {
+            SEEN[id][outcome] = true;
+            String path = System.getenv("BRANCHLAB_PROBE_FILE");
+            if (path != null) {
+                try (java.io.FileWriter out = new java.io.FileWriter(path, true)) {
+                    out.write(id + " " + outcome + "\n");
+                } catch (java.io.IOException ignored) {
+                }
+            }
+        }
+        return value;
+    }
+}
+"""
 
 # Scanner and BufferedReader methods that consume one value from stdin.
 READ_METHODS = {
@@ -72,8 +99,13 @@ def _numeric_value(node, source_bytes: bytes):
     return None
 
 
-class JavaAdapter(LanguageAdapter):
+class JavaAdapter(CompiledLanguageAdapter):
     """Java adapter using Tree-sitter for syntax parsing."""
+
+    display_name = "Java"
+    exit_label = "Java"
+    timeout_message = "Java execution timed out."
+    temp_prefix = "ast_test_java_"
 
     def __init__(self):
         self.language = tree_sitter.Language(tree_sitter_java.language())
@@ -162,84 +194,64 @@ class JavaAdapter(LanguageAdapter):
         plan.read_order = list(dict.fromkeys(name for _, name in sorted(reads)))
         return plan
 
-    def execute(
-        self,
-        source_code: str,
-        test_case: TestCase,
-    ) -> TestResult:
-        """Compile and execute Java source using JVM system properties."""
-        return self.execute_many(source_code, [test_case])[0]
-
-    def execute_many(
-        self,
-        source_code: str,
-        test_cases: list[TestCase],
-    ) -> list[TestResult]:
-        """Compile Java source once, then run every test case against it."""
-
-        def fail_all(error: str) -> list[TestResult]:
-            return [
-                TestResult(inputs=case.inputs, executed=False, error=error)
-                for case in test_cases
-            ]
-
+    def missing_tools(self) -> str | None:
         if shutil.which("javac") is None or shutil.which("java") is None:
-            return fail_all(
-                "Java JDK tools javac and java must be available on PATH."
-            )
+            return "Java JDK tools javac and java must be available on PATH."
+        return None
 
+    def build(self, temp_dir: str, source_code: str):
         class_match = re.search(
             r"\bpublic\s+class\s+([A-Za-z_]\w*)",
             source_code,
         )
         if not class_match:
-            return fail_all("Java source must declare a public class.")
+            return None, "Java source must declare a public class."
 
         class_name = class_match.group(1)
+        source_path = Path(temp_dir) / f"{class_name}.java"
+        source_path.write_text(source_code, encoding="utf-8")
 
-        try:
-            with tempfile.TemporaryDirectory(prefix="ast_test_java_") as temp_dir:
-                source_path = Path(temp_dir) / f"{class_name}.java"
-                source_path.write_text(source_code, encoding="utf-8")
+        compile_result = subprocess.run(
+            ["javac", str(source_path)],
+            capture_output=True,
+            text=True,
+            timeout=COMPILE_TIMEOUT_SECONDS,
+            cwd=temp_dir,
+        )
 
-                try:
-                    compile_result = subprocess.run(
-                        ["javac", str(source_path)],
-                        capture_output=True,
-                        text=True,
-                        timeout=15,
-                        cwd=temp_dir,
-                    )
-                except subprocess.TimeoutExpired:
-                    return fail_all("Java compilation timed out.")
+        if compile_result.returncode != 0:
+            return None, (
+                compile_result.stderr.strip()
+                or compile_result.stdout.strip()
+                or "Java compilation failed."
+            )
+        return class_name, None
 
-                if compile_result.returncode != 0:
-                    return fail_all(
-                        compile_result.stderr.strip()
-                        or compile_result.stdout.strip()
-                        or "Java compilation failed."
-                    )
+    def add_probes(self, source_bytes: bytes, branches: list[Branch]) -> str:
+        """Wrap every condition and append the probe class.
 
-                plan = self.input_plan(source_code)
-                return [
-                    self._run_case(class_name, temp_dir, case, plan)
-                    for case in test_cases
-                ]
+        The class goes after the program so line numbers do not change.
+        """
+        body = insert_probes(
+            source_bytes,
+            branches,
+            lambda branch_id, condition: (
+                f"__BranchLabProbe.hit({branch_id}, ({condition}))"
+            ),
+        )
+        return body + PROBE_CLASS.replace("BRANCH_COUNT", str(len(branches)))
 
-        except OSError as error:
-            return fail_all(f"{type(error).__name__}: {error}")
-
-    def _run_case(
+    def run_command(
         self,
-        class_name: str,
+        target,
         temp_dir: str,
         test_case: TestCase,
         plan: InputPlan,
-    ) -> TestResult:
-        """Run an already compiled Java class for one test case.
+    ) -> tuple[list[str], str]:
+        """Offer each value three ways.
 
-        Each value is offered three ways: as a system property, at the
-        args index the program reads it from, and on standard input.
+        As a system property, at the args index the program reads it
+        from, and on standard input.
         """
         properties = [
             f"-D{key}={value}"
@@ -253,50 +265,5 @@ class JavaAdapter(LanguageAdapter):
                 if name in test_case.inputs:
                     arguments[position] = str(test_case.inputs[name])
 
-        try:
-            run_result = subprocess.run(
-                ["java", *properties, "-cp", temp_dir, class_name, *arguments],
-                input=stdin_text(
-                    reorder(test_case.inputs, plan.read_order).values()
-                ),
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=temp_dir,
-            )
-        except subprocess.TimeoutExpired:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error="Java execution timed out.",
-            )
-        except OSError as error:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error=f"{type(error).__name__}: {error}",
-            )
-
-        return TestResult(
-            inputs=test_case.inputs,
-            executed=run_result.returncode == 0,
-            output=run_result.stdout,
-            error=run_result.stderr.strip()
-            or (
-                None
-                if run_result.returncode == 0
-                else f"Java exited with code {run_result.returncode}."
-            ),
-        )
-
-    def execute_and_verify(
-        self,
-        source_code: str,
-        test_case: TestCase,
-        expected_output: str,
-    ) -> TestResult:
-        """Execute a Java test case and verify its output."""
-        from src.core.result_verifier import verify_output
-
-        result = self.execute(source_code, test_case)
-        return verify_output(result, expected_output)
+        stdin = stdin_text(reorder(test_case.inputs, plan.read_order).values())
+        return ["java", *properties, "-cp", temp_dir, target, *arguments], stdin

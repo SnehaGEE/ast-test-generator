@@ -77,4 +77,5 @@ int main(int argc, char *argv[]) {
     )
 
     assert "only available for Python" in result["message"]
-    assert result["coverage"]["branch_coverage_percent"] is None
+    # C branch coverage is measured with probes (test_java_c_coverage.py).
+    assert result["coverage"]["success"] is True
