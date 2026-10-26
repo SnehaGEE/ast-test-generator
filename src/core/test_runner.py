@@ -5,7 +5,10 @@ from src.core.targeted_generator import generate_targeted_inputs
 from src.core.invalid_input_generator import generate_invalid_inputs
 from src.core.fuzz_generator import generate_fuzz_inputs
 from src.languages.python.adapter import PythonAdapter
-from src.coverage.coverage_analyzer import analyze_branch_coverage
+from src.coverage.coverage_analyzer import (
+    analyze_branch_coverage,
+    suggest_missing_branch_tests,
+)
 from src.coverage.unsupported_syntax import find_unsupported_constructs
 
 # When invalid-input or fuzz tests are requested, each one reserves this
@@ -66,6 +69,34 @@ def _base_row(
             base[name] = values[1] if len(values) > 1 else values[0]
 
     return base
+
+
+def _verified_suggestions(
+    source_code: str,
+    coverage: dict[str, Any],
+    base: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Suggest inputs for missing branch outcomes and check each one.
+
+    A suggestion changes one variable; the others come from the base
+    row. It is run once and marked verified only if it really reaches
+    the missing outcome, since other conditions can make it unreachable.
+    """
+    if not coverage.get("success"):
+        return []
+
+    suggestions = []
+    for suggestion in suggest_missing_branch_tests(source_code, coverage):
+        inputs = {**base, **suggestion["inputs"]}
+        check = analyze_branch_coverage(source_code, [inputs])
+        target = f"{suggestion['target_outcome']}_covered"
+        verified = any(
+            branch["line"] == suggestion["line"] and branch[target]
+            for branch in check.get("branches", [])
+        )
+        suggestions.append({**suggestion, "inputs": inputs, "verified": verified})
+
+    return suggestions
 
 
 def _generate_invalid_spread(
@@ -131,6 +162,7 @@ def run_python_test_suite(
                 # None means "not measured", which is not the same as 0%.
                 "branch_coverage_percent": None,
                 "unsupported": unsupported,
+                "suggestions": [],
             },
             "message": _join_messages(
                 "No supported conditions were detected; "
@@ -240,6 +272,9 @@ def run_python_test_suite(
         [case.inputs for case, _ in planned],
     )
     coverage["unsupported"] = unsupported
+    coverage["suggestions"] = _verified_suggestions(
+        source_code, coverage, base
+    )
 
     if not planned:
         base_message = (
