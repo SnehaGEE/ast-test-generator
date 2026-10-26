@@ -318,12 +318,18 @@ def analyze_branch_coverage(
 def suggest_missing_branch_tests(
     source_code: str,
     coverage_result: dict[str, Any],
+    conditions: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Suggest candidate inputs for missing outcomes of simple conditions."""
+    """Suggest candidate inputs for missing outcomes of simple conditions.
 
-    from src.parser.analyzer.condition_analyzer import analyze_source
+    conditions defaults to the Python analyzer's result for source_code;
+    other languages pass their own in the same dict shape.
+    """
 
-    conditions = analyze_source(source_code)
+    if conditions is None:
+        from src.parser.analyzer.condition_analyzer import analyze_source
+
+        conditions = analyze_source(source_code)
     suggestions = []
     missing_by_line = {
         branch["line"]: branch["missing"]

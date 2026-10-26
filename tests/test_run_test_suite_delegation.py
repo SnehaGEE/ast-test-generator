@@ -58,7 +58,7 @@ def test_python_path_reports_unsupported_syntax():
 
 
 @pytest.mark.skipif(not shutil.which("gcc"), reason="GCC is not installed")
-def test_c_path_says_invalid_and_fuzz_are_python_only():
+def test_c_path_runs_invalid_and_fuzz_tests():
     source = r"""
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +76,8 @@ int main(int argc, char *argv[]) {
         include_fuzz_inputs=True,
     )
 
-    assert "only available for Python" in result["message"]
-    # C branch coverage is measured with probes (test_java_c_coverage.py).
+    # Java and C run the same strategies as Python
+    # (details in test_java_c_strategies.py).
+    categories = {test.category for test in result["results"]}
+    assert {"targeted", "invalid", "fuzz"} <= categories
     assert result["coverage"]["success"] is True

@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.core.models import TestCase, TestResult
+from src.core.models import Condition, TestCase, TestResult
 from src.core.targeted_generator import generate_targeted_inputs
 from src.core.invalid_input_generator import generate_invalid_inputs
 from src.core.fuzz_generator import generate_fuzz_inputs
@@ -74,32 +74,47 @@ def _base_row(
     return base
 
 
+def verified_suggestions(
+    candidates: list[dict[str, Any]],
+    base: dict[str, Any],
+    reaches,
+) -> list[dict[str, Any]]:
+    """Complete each suggestion with the base row and check it.
+
+    A suggestion changes one variable; the others come from the base
+    row. reaches(inputs, line, target_outcome) runs it once, and the
+    suggestion is marked verified only if it really reaches the missing
+    outcome, since other conditions can make it unreachable.
+    """
+    suggestions = []
+    for suggestion in candidates:
+        inputs = {**base, **suggestion["inputs"]}
+        verified = reaches(
+            inputs, suggestion["line"], suggestion["target_outcome"]
+        )
+        suggestions.append({**suggestion, "inputs": inputs, "verified": verified})
+    return suggestions
+
+
 def _verified_suggestions(
     source_code: str,
     coverage: dict[str, Any],
     base: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Suggest inputs for missing branch outcomes and check each one.
-
-    A suggestion changes one variable; the others come from the base
-    row. It is run once and marked verified only if it really reaches
-    the missing outcome, since other conditions can make it unreachable.
-    """
+    """Python suggestions, each checked with one coverage run."""
     if not coverage.get("success"):
         return []
 
-    suggestions = []
-    for suggestion in suggest_missing_branch_tests(source_code, coverage):
-        inputs = {**base, **suggestion["inputs"]}
+    def reaches(inputs, line, target_outcome):
         check = analyze_branch_coverage(source_code, [inputs])
-        target = f"{suggestion['target_outcome']}_covered"
-        verified = any(
-            branch["line"] == suggestion["line"] and branch[target]
+        return any(
+            branch["line"] == line and branch[f"{target_outcome}_covered"]
             for branch in check.get("branches", [])
         )
-        suggestions.append({**suggestion, "inputs": inputs, "verified": verified})
 
-    return suggestions
+    return verified_suggestions(
+        suggest_missing_branch_tests(source_code, coverage), base, reaches
+    )
 
 
 def _generate_invalid_spread(
@@ -128,52 +143,17 @@ def _generate_invalid_spread(
     return spread
 
 
-def run_python_test_suite(
-    source_code: str,
-    max_cases: int = 100,
-    include_invalid_inputs: bool = False,
-    include_fuzz_inputs: bool = False,
-) -> dict[str, Any]:
-    """Generate and execute targeted, invalid-input, and fuzz tests."""
+def plan_test_cases(
+    conditions: list[Condition],
+    max_cases: int,
+    include_invalid_inputs: bool,
+    include_fuzz_inputs: bool,
+) -> tuple[list[tuple[TestCase, str]], dict[str, Any], str | None]:
+    """Choose targeted, invalid-input and fuzz cases within max_cases.
 
-    if max_cases < 1:
-        raise ValueError("max_cases must be at least 1")
-
-    adapter = PythonAdapter()
-    adapter.parse(source_code)
-    conditions = adapter.analyze(source_code)
-    unsupported = find_unsupported_constructs(source_code)
-    unsupported_note = _describe_unsupported(unsupported)
-
-    if (
-        not conditions
-        and not include_invalid_inputs
-        and not include_fuzz_inputs
-    ):
-        return {
-            "results": [],
-            "total_tests": 0,
-            "successful_executions": 0,
-            "failed_executions": 0,
-            "coverage": {
-                "covered": 0,
-                "total": 0,
-                "percentage": 0.0,
-                "success": True,
-                "error": None,
-                "branches": [],
-                # None means "not measured", which is not the same as 0%.
-                "branch_coverage_percent": None,
-                "unsupported": unsupported,
-                "suggestions": [],
-            },
-            "message": _join_messages(
-                "No supported conditions were detected; "
-                "no targeted tests were generated.",
-                unsupported_note,
-            ),
-        }
-
+    Returns (planned cases with their category, base row, note about
+    requested strategies that did not fit). Used for every language.
+    """
     condition_data = [
         {
             "variable": condition.variable,
@@ -263,6 +243,62 @@ def run_python_test_suite(
                 "raise the maximum to include them"
             )
         extras_note = f"{names} tests were requested but not generated: {reason}."
+
+    return planned, base, extras_note
+
+
+def run_python_test_suite(
+    source_code: str,
+    max_cases: int = 100,
+    include_invalid_inputs: bool = False,
+    include_fuzz_inputs: bool = False,
+) -> dict[str, Any]:
+    """Generate and execute targeted, invalid-input, and fuzz tests."""
+
+    if max_cases < 1:
+        raise ValueError("max_cases must be at least 1")
+
+    adapter = PythonAdapter()
+    adapter.parse(source_code)
+    conditions = adapter.analyze(source_code)
+    unsupported = find_unsupported_constructs(source_code)
+    unsupported_note = _describe_unsupported(unsupported)
+
+    if (
+        not conditions
+        and not include_invalid_inputs
+        and not include_fuzz_inputs
+    ):
+        return {
+            "results": [],
+            "total_tests": 0,
+            "successful_executions": 0,
+            "failed_executions": 0,
+            "coverage": {
+                "covered": 0,
+                "total": 0,
+                "percentage": 0.0,
+                "success": True,
+                "error": None,
+                "branches": [],
+                # None means "not measured", which is not the same as 0%.
+                "branch_coverage_percent": None,
+                "unsupported": unsupported,
+                "suggestions": [],
+            },
+            "message": _join_messages(
+                "No supported conditions were detected; "
+                "no targeted tests were generated.",
+                unsupported_note,
+            ),
+        }
+
+    planned, base, extras_note = plan_test_cases(
+        conditions,
+        max_cases,
+        include_invalid_inputs,
+        include_fuzz_inputs,
+    )
 
     results: list[TestResult] = []
     for case, category in planned:

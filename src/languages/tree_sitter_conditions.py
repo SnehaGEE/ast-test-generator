@@ -35,18 +35,18 @@ def extract_conditions(
     """
     conditions: list[Condition] = []
 
-    def add(name_node, operator, value, node):
+    def add(name_node, operator, value, line):
         conditions.append(
             Condition(
                 variable=node_text(name_node, source_bytes),
                 operator=operator,
                 value=value,
-                line=node.start_point.row + 1,
+                line=line,
                 language=language,
             )
         )
 
-    def comparisons(node):
+    def comparisons(node, line):
         if node.type == "binary_expression":
             operator_node = node.child_by_field_name("operator")
             left = node.child_by_field_name("left")
@@ -59,23 +59,25 @@ def extract_conditions(
                     if left.type == "identifier":
                         value = numeric_value(right)
                         if value is not None:
-                            add(left, operator, value, node)
+                            add(left, operator, value, line)
                             return
                     elif right.type == "identifier":
                         value = numeric_value(left)
                         if value is not None:
-                            add(right, REVERSED_OPERATORS[operator], value, node)
+                            add(right, REVERSED_OPERATORS[operator], value, line)
                             return
 
         # &&, ||, !, parentheses: look inside for more comparisons.
         for child in node.named_children:
-            comparisons(child)
+            comparisons(child, line)
 
     def visit(node):
         if node.type in CONDITION_STATEMENTS:
             condition = node.child_by_field_name("condition")
             if condition is not None:
-                comparisons(condition)
+                # Like Python, report the statement's line, which is
+                # also the line its branch coverage is reported on.
+                comparisons(condition, node.start_point.row + 1)
 
         for child in node.children:
             visit(child)
