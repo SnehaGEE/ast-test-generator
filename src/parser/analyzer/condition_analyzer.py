@@ -30,6 +30,21 @@ REVERSED_OPERATORS = {
 }
 
 
+def _as_constant(node: ast.expr) -> ast.expr:
+    """Fold a signed numeric literal such as -5 into an ast.Constant."""
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, (ast.USub, ast.UAdd))
+        and isinstance(node.operand, ast.Constant)
+        and isinstance(node.operand.value, (int, float))
+        and not isinstance(node.operand.value, bool)
+    ):
+        value = node.operand.value
+        return ast.Constant(-value if isinstance(node.op, ast.USub) else value)
+
+    return node
+
+
 class ConditionAnalyzer(ast.NodeVisitor):
     """Find supported variable-to-constant comparisons in Python."""
 
@@ -82,11 +97,12 @@ class ConditionAnalyzer(ast.NodeVisitor):
         if not isinstance(expression, ast.Compare):
             return
 
-        left = expression.left
+        left = _as_constant(expression.left)
 
         for operator_node, right in zip(
             expression.ops, expression.comparators
         ):
+            right = _as_constant(right)
             operator = OPERATOR_SYMBOLS.get(type(operator_node))
 
             if operator is None:
