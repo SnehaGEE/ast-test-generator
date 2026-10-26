@@ -551,20 +551,6 @@ function App() {
                 on reserves about 20% of the maximum.
               </p>
             </div>
-
-            <button
-              className="run-button config-run"
-              onClick={runAnalysis}
-              disabled={running || !maxCasesValid}
-            >
-              <Play size={16} fill="currentColor" />
-              {running ? "Running..." : "Generate & Run"}
-            </button>
-
-            <div className="config-footnote">
-              <span className="status-dot" />
-              Runs against your local project backend
-            </div>
           </aside>
         </section>
 
