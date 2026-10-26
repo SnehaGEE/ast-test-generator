@@ -36,11 +36,12 @@ if age >= 18:
 else:
     print("Minor")
 `,
-  java: `public class AgeCheck {
+  java: `import java.util.Scanner;
+
+public class AgeCheck {
     public static void main(String[] args) {
-        int age = Integer.parseInt(
-            System.getProperty("age", "0")
-        );
+        Scanner in = new Scanner(System.in);
+        int age = in.nextInt();
 
         if (age >= 18) {
             System.out.println("Adult");
@@ -50,14 +51,14 @@ else:
     }
 }`,
   c: `#include <stdio.h>
-#include <stdlib.h>
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
+int main(void) {
+    int age;
+
+    if (scanf("%d", &age) != 1) {
+        printf("Please enter a number\\n");
         return 1;
     }
-
-    int age = atoi(argv[1]);
 
     if (age >= 18) {
         printf("Adult\\n");
@@ -244,8 +245,8 @@ function App() {
           source_code: source,
           language,
           max_cases: maxCases,
-          include_invalid_inputs: language === "python" && invalidTests,
-          include_fuzz_inputs: language === "python" && fuzzTests,
+          include_invalid_inputs: invalidTests,
+          include_fuzz_inputs: fuzzTests,
         }),
         signal: controller.signal,
       });
@@ -270,7 +271,7 @@ function App() {
         );
       } else if (error instanceof TypeError) {
         setApiError(
-          "Cannot reach the Python backend. Make sure the backend is running."
+          "Cannot reach the backend. Make sure it is running (python -m uvicorn api:app)."
         );
       } else {
         setApiError(
@@ -504,18 +505,14 @@ function App() {
 
             <div className="strategy-heading">
               <h3>Testing strategies</h3>
-              <span>PYTHON ONLY</span>
             </div>
 
             <label
-              className={`strategy-option ${
-                language !== "python" ? "disabled" : ""
-              }`}
+              className="strategy-option"
             >
               <input
                 type="checkbox"
                 checked={invalidTests}
-                disabled={language !== "python"}
                 onChange={(event) =>
                   setInvalidTests(event.target.checked)
                 }
@@ -528,14 +525,11 @@ function App() {
             </label>
 
             <label
-              className={`strategy-option ${
-                language !== "python" ? "disabled" : ""
-              }`}
+              className="strategy-option"
             >
               <input
                 type="checkbox"
                 checked={fuzzTests}
-                disabled={language !== "python"}
                 onChange={(event) =>
                   setFuzzTests(event.target.checked)
                 }

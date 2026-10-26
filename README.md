@@ -7,21 +7,21 @@ condition. It then runs those tests, records outputs and runtime errors,
 and measures **branch coverage**, so you can see which program paths were
 tested and which were missed.
 
-It supports **Python**, **Java** and **C**, and has a React web interface
-backed by a FastAPI server.
+It supports **Python**, **Java** and **C** with the same features, and has
+a React web interface backed by a FastAPI server.
 
 ## What it does
 
 | Step | What happens |
 | --- | --- |
 | 1. Parse | Python uses the standard `ast` module; Java and C use Tree-sitter. |
-| 2. Analyze | Finds `variable <op> constant` comparisons in `if`/`elif` (and Python `while`) conditions, including `and`/`or`, reversed operands (`10 <= x`, Python), and signed constants (`x > -5`). |
+| 2. Analyze | Finds `variable <op> constant` comparisons in `if`/`elif`/`else if` and `while` conditions (plus `do`-`while` in Java and C), including `and`/`or`/`not`, reversed operands (`10 <= x`) and signed or suffixed literals (`-5`, `0x1F`, `5L`, `2.5f`). |
 | 3. Generate | Picks boundary values for each comparison, e.g. `age >= 18` gives 17, 18, 19, and combines variables into at most *max cases* test inputs. |
-| 4. Execute | Runs every test case and records output, errors, exit codes and timeouts. Java and C are compiled once per run. |
-| 5. Measure | For Python, records which true/false outcome of each `if`/`while` condition really happened at runtime. |
+| 4. Execute | Runs every test and records output, errors, exit codes and timeouts. Each value reaches the variable it belongs to (see below). Java and C are compiled once per run. |
+| 5. Measure | Records which true/false outcome of each `if`/`while` condition really happened at runtime. |
 | 6. Suggest | For each missing outcome, suggests an input set, runs it once, and marks it **verified** only if it actually reaches that outcome. |
 
-Optional strategies (Python):
+Optional strategies, for all three languages:
 
 - **Invalid-input tests**: values such as `"garbage"`, `""`, `None` and
   very long numbers, to see how the program handles bad input.
@@ -31,8 +31,8 @@ Each strategy you turn on reserves about 20% of the maximum test cases.
 
 ## Quick start (Windows)
 
-Prerequisites: Python 3.11+, Node.js 20+, and optionally a JDK (`javac`,
-`java`) and GCC on `PATH` for Java and C.
+Prerequisites: Python 3.11+, Node.js 20+, and for Java and C a JDK
+(`javac`, `java`) and GCC on `PATH`.
 
 ```powershell
 git clone https://github.com/SnehaGEE/ast-test-generator.git
@@ -61,17 +61,23 @@ the API is reachable. To use another API address, set `VITE_API_URL`
 ```
 
 Java and C tests are skipped automatically when the JDK or GCC is
-missing. `tests/test_examples.py` runs every program in `examples/` and
-compares **each real output** with a reference implementation, so it
-does not rely on the coverage percentage alone.
+missing. The tests check real program outputs and recompute expected
+coverage from the actual generated inputs; a coverage percentage is never
+accepted on its own. `tests/test_examples.py` runs every program in
+`examples/` and compares each output with a reference implementation.
 
 ## How programs receive inputs
 
-| Language | Inputs |
-| --- | --- |
-| Python | As global variables, and as answers to `input()` calls in order. |
-| Java | As system properties: `System.getProperty("age")`. The source must declare a `public class`. |
-| C | As command-line arguments in alphabetical order of variable name: `argv[1]`, `argv[2]` and so on. A variable named `argc` sets the argument count instead. |
+Generated values are keyed by variable name. BranchLab reads the AST to
+find *where* the program reads each variable and supplies the value there:
+
+| Language | Standard input | Command line | Other |
+| --- | --- | --- | --- |
+| Python | `x = int(input())`, in the order the assignments appear | | Also set as global variables. |
+| Java | `Scanner.nextInt()`, `next()`, `nextLine()`..., `BufferedReader.readLine()`, in source order | `args[0]`, `args[1]`... at the index the program uses | Also passed as system properties: `System.getProperty("x")`. The source must declare a `public class`. |
+| C | `scanf("%d", &x)`, in source order | `argv[1]`, `argv[2]`... at the index the program uses (alphabetical order if none is found) | A variable named `argc` sets the argument count. |
+
+Values on standard input are one per line.
 
 See [`examples/`](examples/) for ready-to-paste programs in each language.
 
@@ -96,35 +102,40 @@ counts, a `message`, and `coverage`, which holds `branches`,
 
 ## Limitations
 
-- **Branch coverage is measured for Python only.** Java and C show
-  "not measured" (`null`), never 0% or 100%.
 - Only comparisons between a variable and a numeric constant produce
-  targeted inputs. Comparisons between two variables (`x > y`) or with
-  expressions (`x > n * 2`) are not analyzed.
-- Python `for` loops, `match`/`case`, conditional expressions and
-  comprehension filters run normally but are **not** counted in the
-  coverage percentage; the interface lists them when present.
-- Java and C analyze `if` conditions only (not `while`), and do not
-  handle reversed operands such as `5 < x`.
-- Invalid-input and fuzz tests are Python only.
+  targeted inputs. Comparisons between two variables (`x > y`), with
+  expressions (`x > n * 2`) or with characters (`c == 'a'`) are not
+  analyzed.
+- Coverage counts `if`/`elif`/`else if` and `while` conditions. `for`
+  loops, `do`-`while` loops, `switch`/`match`, conditional expressions
+  (`?:`, `a if c else b`) and comprehension filters run normally but are
+  **not** counted; the interface lists them when present.
+- Input positions are found from common patterns (see the table above).
+  Values read through helper functions or other APIs may not reach the
+  intended variable.
+- Java and C coverage works by compiling a probed copy of the program.
+  If that copy does not compile, the tests run on the original program
+  and coverage is shown as not measured.
 - Time limits: about 2-3 s per Python test, 15 s to compile and 10 s per
   run for Java and C.
-- Each Python test runs in its own child process so hangs and crashes
-  are contained, but this is **not a security sandbox**. Only analyze
-  code you trust, and keep the API on `127.0.0.1` (the default).
+- Tests run in separate processes so hangs and crashes are contained,
+  but this is **not a security sandbox**. Only analyze code you trust,
+  and keep the API on `127.0.0.1` (the default).
 
 ## Project layout
 
 ```
-api.py                 FastAPI server (/api/run, /api/health)
-frontend/              BranchLab React + Vite interface
-src/core/              Runners, input generators, data models
-src/languages/         Python, Java and C adapters (parse, analyze, execute)
-src/parser/analyzer/   Python condition analyzer, boundary values, executor
-src/coverage/          Python branch coverage and unsupported-syntax detection
-examples/              Demo programs for each language
-tests/                 pytest suite
-docs/architecture.md   How the pieces fit together
+api.py                  FastAPI server (/api/run, /api/health)
+frontend/               BranchLab React + Vite interface
+src/core/               Runners, test planning, input generators, models
+src/languages/          Python, Java and C adapters; shared Java/C engine,
+                        branch probes and input-position detection
+src/parser/analyzer/    Python condition analyzer, boundary values, executor
+src/coverage/           Python branch coverage, unsupported-syntax detection,
+                        coverage suggestions
+examples/               Demo programs for each language
+tests/                  pytest suite
+docs/architecture.md    How the pieces fit together
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the design.

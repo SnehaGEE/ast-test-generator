@@ -117,3 +117,28 @@ def test_c_example():
     result = _run("c/grade.c", "c")
     assert result["failed_executions"] == 0
     _check_outputs(result, _grade)
+
+
+@pytest.mark.skipif(
+    not (shutil.which("javac") and shutil.which("java")),
+    reason="Java JDK is not installed",
+)
+def test_java_stdin_example():
+    result = _run("java/Thermostat.java", "java")
+    assert result["failed_executions"] == 0
+    _check_outputs(result, _thermostat)
+    temps = {test.inputs["temp"] for test in result["results"]}
+    assert {-11, -10, -9} <= temps
+    assert result["coverage"]["branch_coverage_percent"] == 100
+
+
+@pytest.mark.skipif(not shutil.which("gcc"), reason="GCC is not installed")
+def test_c_stdin_while_example():
+    result = _run("c/countdown.c", "c")
+    assert result["failed_executions"] == 0
+    _check_outputs(result, _countdown)
+    [loop] = result["coverage"]["branches"]
+    assert loop["kind"] == "while"
+    ns = [test.inputs["n"] for test in result["results"]]
+    assert loop["true_covered"] == any(n > 0 for n in ns)
+    assert loop["false_covered"] is True
