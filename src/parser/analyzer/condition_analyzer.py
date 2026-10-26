@@ -94,6 +94,12 @@ class ConditionAnalyzer(ast.NodeVisitor):
                 self._extract_comparisons(value, line)
             return
 
+        if isinstance(expression, ast.UnaryOp) and isinstance(
+            expression.op, ast.Not
+        ):
+            self._extract_comparisons(expression.operand, line)
+            return
+
         if not isinstance(expression, ast.Compare):
             return
 

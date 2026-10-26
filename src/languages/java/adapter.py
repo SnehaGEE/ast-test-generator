@@ -16,6 +16,7 @@ from src.languages.input_plan import (
     node_text,
     stdin_text,
 )
+from src.languages.tree_sitter_conditions import extract_conditions
 from src.core.models import Condition, TestCase, TestResult
 
 
@@ -33,14 +34,16 @@ READ_METHODS = {
     "readLine",
 }
 
-NUMERIC_LITERALS = {
+INTEGER_LITERALS = {
     "decimal_integer_literal",
-    "decimal_floating_point_literal",
+    "hex_integer_literal",
+    "octal_integer_literal",
+    "binary_integer_literal",
 }
 
 
 def _numeric_value(node, source_bytes: bytes):
-    """Return the value of a numeric literal such as -5, +3, 5L or 2.5f.
+    """Return the value of a numeric literal such as -5, 0x1F, 5L or 2.5f.
 
     Returns None when the node is not a supported numeric literal.
     """
@@ -53,18 +56,20 @@ def _numeric_value(node, source_bytes: bytes):
         sign = -1 if operator.type == "-" else 1
         node = operand
 
-    if node.type not in NUMERIC_LITERALS:
-        return None
-
-    text = source_bytes[node.start_byte:node.end_byte].decode("utf-8")
-    text = text.replace("_", "").rstrip("lLfFdD")
+    text = node_text(node, source_bytes).replace("_", "")
 
     try:
         if node.type == "decimal_floating_point_literal":
-            return sign * float(text)
-        return sign * int(text)
+            return sign * float(text.rstrip("fFdD"))
+        if node.type == "octal_integer_literal":
+            return sign * int(text.rstrip("lL"), 8)
+        if node.type in INTEGER_LITERALS:
+            # base 0 reads 0x.. and 0b.. prefixes.
+            return sign * int(text.rstrip("lL"), 0)
     except ValueError:
         return None
+
+    return None
 
 
 class JavaAdapter(LanguageAdapter):
@@ -87,78 +92,15 @@ class JavaAdapter(LanguageAdapter):
         return tree
 
     def analyze(self, source_code: str) -> list[Condition]:
-        """Extract supported numeric comparisons from Java if conditions."""
+        """Extract numeric comparisons from if, while and do conditions."""
         tree = self.parse(source_code)
         source_bytes = source_code.encode("utf-8")
-        conditions = []
-
-        supported_operators = {
-            ">": ">",
-            ">=": ">=",
-            "<": "<",
-            "<=": "<=",
-            "==": "==",
-            "!=": "!=",
-        }
-
-        def visit(node):
-            if node.type == "if_statement":
-                condition_node = node.child_by_field_name("condition")
-
-                if condition_node is not None:
-                    extract_comparisons(condition_node)
-
-            for child in node.children:
-                visit(child)
-
-        def extract_comparisons(node):
-            if node.type == "parenthesized_expression":
-                for child in node.named_children:
-                    extract_comparisons(child)
-                return
-
-            if node.type == "binary_expression":
-                operator_node = node.child_by_field_name("operator")
-                left_node = node.child_by_field_name("left")
-                right_node = node.child_by_field_name("right")
-
-                if operator_node and left_node and right_node:
-                    operator = source_bytes[
-                        operator_node.start_byte:operator_node.end_byte
-                    ].decode("utf-8")
-
-                    left_text = source_bytes[
-                        left_node.start_byte:left_node.end_byte
-                    ].decode("utf-8")
-
-                    value = _numeric_value(right_node, source_bytes)
-
-                    if (
-                        operator in supported_operators
-                        and left_node.type == "identifier"
-                        and value is not None
-                    ):
-                        conditions.append(
-                            Condition(
-                                variable=left_text,
-                                operator=supported_operators[operator],
-                                value=value,
-                                line=node.start_point.row + 1,
-                                language="java",
-                            )
-                        )
-                        return
-
-                # Also inspect nested comparisons in compound conditions.
-                for child in node.named_children:
-                    extract_comparisons(child)
-                return
-
-            for child in node.named_children:
-                extract_comparisons(child)
-
-        visit(tree.root_node)
-        return conditions
+        return extract_conditions(
+            tree.root_node,
+            source_bytes,
+            "java",
+            lambda node: _numeric_value(node, source_bytes),
+        )
 
     def input_plan(self, source_code: str) -> InputPlan:
         """Find stdin reads and args[n] positions in the source."""

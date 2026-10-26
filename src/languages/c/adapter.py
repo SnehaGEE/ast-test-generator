@@ -16,7 +16,53 @@ from src.languages.input_plan import (
     node_text,
     stdin_text,
 )
+from src.languages.tree_sitter_conditions import extract_conditions
 from src.core.models import Condition, TestCase, TestResult
+
+
+def _parse_c_number(text: str):
+    """Parse a C number literal such as 42, -5, 0x1F, 017, 5u or 2.5f."""
+    text = text.replace("'", "").lower()
+    sign = -1 if text.startswith("-") else 1
+    text = text.lstrip("+-")
+
+    if text.startswith(("0x", "0b")):
+        if "." in text or "p" in text:
+            return None  # hexadecimal floats are not supported
+        return sign * int(text.rstrip("ul"), 0)
+
+    if "." in text or "e" in text:
+        return sign * float(text.rstrip("fl"))
+
+    text = text.rstrip("ul")
+    if len(text) > 1 and text.startswith("0"):
+        return sign * int(text, 8)
+    return sign * int(text)
+
+
+def _numeric_value(node, source_bytes: bytes):
+    """Return a numeric literal's value, or None for anything else."""
+    sign = 1
+
+    if node.type == "unary_expression":
+        operator = node.child_by_field_name("operator")
+        argument = node.child_by_field_name("argument")
+        if operator is None or argument is None:
+            return None
+        if operator.type not in {"-", "+"}:
+            return None
+        sign = -1 if operator.type == "-" else 1
+        node = argument
+
+    if node.type != "number_literal":
+        return None
+
+    try:
+        value = _parse_c_number(node_text(node, source_bytes))
+    except ValueError:
+        return None
+
+    return None if value is None else sign * value
 
 
 class CAdapter(LanguageAdapter):
@@ -39,94 +85,15 @@ class CAdapter(LanguageAdapter):
         return tree
 
     def analyze(self, source_code: str) -> list[Condition]:
-        """Extract supported variable-to-numeric-constant comparisons."""
+        """Extract numeric comparisons from if, while and do conditions."""
         tree = self.parse(source_code)
         source_bytes = source_code.encode("utf-8")
-        conditions = []
-
-        supported_operators = {">", ">=", "<", "<=", "==", "!="}
-
-        def extract_comparisons(node):
-            if node.type == "parenthesized_expression":
-                for child in node.named_children:
-                    extract_comparisons(child)
-                return
-
-            if node.type == "binary_expression":
-                left_node = node.child_by_field_name("left")
-                right_node = node.child_by_field_name("right")
-
-                operator_node = next(
-                    (
-                        child
-                        for child in node.children
-                        if child.type in {
-                            ">", ">=", "<", "<=", "==", "!=",
-                            "+", "-", "*", "/", "%", "&&", "||",
-                        }
-                    ),
-                    None,
-                )
-
-                if left_node and right_node and operator_node:
-                    operator = source_bytes[
-                        operator_node.start_byte:operator_node.end_byte
-                    ].decode("utf-8")
-
-                    left_text = source_bytes[
-                        left_node.start_byte:left_node.end_byte
-                    ].decode("utf-8")
-
-                    right_text = source_bytes[
-                        right_node.start_byte:right_node.end_byte
-                    ].decode("utf-8")
-
-                    if (
-                        operator in supported_operators
-                        and left_node.type == "identifier"
-                        and right_node.type == "number_literal"
-                    ):
-                        try:
-                            value = (
-                                float(right_text)
-                                if any(char in right_text for char in ".eE")
-                                else int(right_text, 0)
-                            )
-                        except ValueError:
-                            return
-
-                        conditions.append(
-                            Condition(
-                                variable=left_text,
-                                operator=operator,
-                                value=value,
-                                line=node.start_point.row + 1,
-                                language="c",
-                            )
-                        )
-                        return
-
-                # Handle nested conditions, e.g.:
-                # age >= 18 && score < 50
-                for child in node.named_children:
-                    extract_comparisons(child)
-                return
-
-            for child in node.named_children:
-                extract_comparisons(child)
-
-        def visit(node):
-            if node.type == "if_statement":
-                condition_node = node.child_by_field_name("condition")
-
-                if condition_node is not None:
-                    extract_comparisons(condition_node)
-
-            for child in node.children:
-                visit(child)
-
-        visit(tree.root_node)
-        return conditions
+        return extract_conditions(
+            tree.root_node,
+            source_bytes,
+            "c",
+            lambda node: _numeric_value(node, source_bytes),
+        )
 
     def input_plan(self, source_code: str) -> InputPlan:
         """Find scanf targets and argv[n] positions in the source."""
