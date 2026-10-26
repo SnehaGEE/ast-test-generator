@@ -25,8 +25,8 @@ REVERSED_OPERATORS = {
     "!=": "!=",
     "is": "is",
     "is not": "is not",
-    "in": "not in",
-    "not in": "in",
+    # "constant in name" tests membership in name, so it has no reversed
+    # form; it is left out on purpose.
 }
 
 
