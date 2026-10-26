@@ -11,6 +11,21 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
     />
     <title>BranchLab</title>
+    <script>
+      // Pick the theme before the first paint so dark mode never flashes.
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem("branchlab-theme");
+        } catch (error) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

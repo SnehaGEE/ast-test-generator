@@ -11,8 +11,10 @@ import {
   Info,
   Lightbulb,
   LoaderCircle,
+  Moon,
   Play,
   SlidersHorizontal,
+  Sun,
   Terminal,
   XCircle,
 } from "lucide-react";
@@ -22,6 +24,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 const API_URL = `${API_BASE}/api/run`;
 const HEALTH_URL = `${API_BASE}/api/health`;
 const HEALTH_INTERVAL_MS = 15000;
+const THEME_STORAGE_KEY = "branchlab-theme";
 const REQUEST_TIMEOUT_MS = 180000;
 const MIN_CASES = 1;
 const MAX_CASES = 100;
@@ -106,6 +109,23 @@ function describeStatus(test) {
   return { label: "Error", tone: "failure" };
 }
 
+// Monaco's vs-dark with the page's indigo surface instead of charcoal.
+function defineEditorThemes(monaco) {
+  monaco.editor.defineTheme("branchlab-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#181b31",
+      "editor.lineHighlightBackground": "#20243f",
+      "editor.lineHighlightBorder": "#20243f",
+      "editorLineNumber.foreground": "#5d6390",
+      "editorLineNumber.activeForeground": "#c9d0ff",
+      "editorGutter.background": "#181b31",
+    },
+  });
+}
+
 const RESULT_TABS = [
   ["tests", "Generated tests", FlaskConical],
   ["output", "Execution output", Terminal],
@@ -182,6 +202,19 @@ function App() {
   const [running, setRunning] = useState(false);
   const [apiError, setApiError] = useState("");
   const [backendUp, setBackendUp] = useState(null);
+  // index.html already chose the starting theme; read it back here.
+  const [theme, setTheme] = useState(
+    () => document.documentElement.dataset.theme || "light"
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Storage can be blocked; the theme still applies for this visit.
+    }
+  }, [theme]);
   const abortRef = useRef(null);
   const resultsRef = useRef(null);
 
@@ -343,12 +376,27 @@ function App() {
           </div>
         </div>
 
-        <div
-          className={`backend-pill ${backendStatus.tone}`}
-          title={API_BASE}
-        >
-          <span className="status-dot" />
-          {backendStatus.text}
+        <div className="topbar-actions">
+          <div
+            className={`backend-pill ${backendStatus.tone}`}
+            title={API_BASE}
+          >
+            <span className="status-dot" />
+            {backendStatus.text}
+          </div>
+
+          <button
+            className="theme-toggle"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label={
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            }
+            title={
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            }
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
         </div>
       </header>
 
@@ -420,7 +468,8 @@ function App() {
                 language={language}
                 value={source}
                 onChange={(value) => setSource(value ?? "")}
-                theme="vs"
+                theme={theme === "dark" ? "branchlab-dark" : "vs"}
+                beforeMount={defineEditorThemes}
                 options={{
                   minimap: { enabled: false },
                   fontSize: 14,

@@ -144,6 +144,10 @@ reaches is shown as *not reached* rather than presented as a fix.
   execution output, and coverage (per-branch table, verified suggestions,
   untracked constructs).
 - A backend status light that polls `GET /api/health` every 15 s.
+- Light and dark themes. All colours are CSS variables in `App.css`;
+  dark mode overrides them under `:root[data-theme="dark"]`. A small
+  script in `index.html` picks the saved choice (or the system setting)
+  before the first paint, and the sun/moon button switches and saves it.
 - A 3-minute request timeout and a cancel button.
 
 ## 8. Tests
