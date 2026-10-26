@@ -1,4 +1,5 @@
 
+
 import shutil
 import subprocess
 import tempfile
@@ -155,13 +156,24 @@ class CAdapter(LanguageAdapter):
                         ),
                     )
 
-                # Exclude argc: it is metadata, not a program input.
-                # Sort keys so arguments are passed in a predictable order.
+                # argc is not an argument; it is the argument count plus
+                # the program name. Sort keys so the other values are
+                # passed in a predictable order.
                 arguments = [
                     str(value)
                     for key, value in sorted(test_case.inputs.items())
                     if key != "argc"
                 ]
+
+                argc = test_case.inputs.get("argc")
+
+                if isinstance(argc, int) and not isinstance(argc, bool):
+                    # Make the program see exactly this argc: drop extra
+                    # arguments, or pad with "0" when more are needed.
+                    wanted = max(argc - 1, 0)
+                    arguments = arguments[:wanted] + [
+                        "0"
+                    ] * (wanted - len(arguments))
 
                 run_result = subprocess.run(
                     [str(executable_path), *arguments],

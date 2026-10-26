@@ -36,3 +36,4 @@ class TestResult:
     error: str | None = None
     expected_output: str | None = None
     correctness: str = "unknown"
+    category: str = ""

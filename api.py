@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -76,6 +75,7 @@ def run_tests(request: TestRequest) -> dict[str, Any]:
                     "error": test.error,
                     "expected_output": test.expected_output,
                     "correctness": test.correctness,
+                    "category": getattr(test, "category", ""),
                 }
                 for test in result["results"]
             ],

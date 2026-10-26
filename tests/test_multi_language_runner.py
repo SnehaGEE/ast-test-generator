@@ -127,7 +127,15 @@ int main(int argc, char *argv[]) {
         result = run_test_suite(source, language="c")
 
         self.assertGreater(result["total_tests"], 0)
-        self.assertEqual(result["failed_executions"], 0)
+
+        # argc = 1 runs the program's missing-argument guard, which
+        # exits with code 1; every other run should succeed.
+        for test in result["results"]:
+            if test.inputs.get("argc") == 1:
+                self.assertFalse(test.executed, test.inputs)
+                self.assertIn("exited with code 1", test.error)
+            else:
+                self.assertTrue(test.executed, test.inputs)
 
         outputs = {
             test.output.strip()
