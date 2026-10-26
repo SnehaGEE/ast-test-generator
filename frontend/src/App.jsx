@@ -1,20 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import {
-  Activity,
-  Braces,
   CheckCircle2,
-  ChevronDown,
   CircleAlert,
   Code2,
   FileCode2,
   FlaskConical,
-  FolderOpen,
   Gauge,
+  GitBranch,
   Info,
   Lightbulb,
+  LoaderCircle,
   Play,
-  Settings2,
+  SlidersHorizontal,
   Terminal,
   XCircle,
 } from "lucide-react";
@@ -108,6 +106,29 @@ function describeStatus(test) {
   return { label: "Error", tone: "failure" };
 }
 
+const RESULT_TABS = [
+  ["tests", "Generated tests", FlaskConical],
+  ["output", "Execution output", Terminal],
+  ["coverage", "Coverage", Gauge],
+];
+
+const CATEGORY_TONES = {
+  targeted: "blue",
+  invalid: "amber",
+  fuzz: "violet",
+};
+
+// Chip colour for each describeStatus tone.
+const STATUS_TONES = {
+  success: "green",
+  warning: "amber",
+  failure: "rose",
+};
+
+function categoryTone(category) {
+  return CATEGORY_TONES[category] ?? CATEGORY_TONES.targeted;
+}
+
 function categoryLabel(category) {
   return CATEGORY_LABELS[category] ?? CATEGORY_LABELS.targeted;
 }
@@ -184,11 +205,6 @@ function App() {
     };
   }, []);
 
-  function showTab(tab) {
-    setActiveTab(tab);
-    resultsRef.current?.scrollIntoView({ behavior: "smooth" });
-  }
-
   const maxCases = parseMaxCases(maxCasesText);
   const maxCasesValid = maxCases !== null;
 
@@ -262,6 +278,10 @@ function App() {
       }
 
       setResults(data);
+      setActiveTab("tests");
+      requestAnimationFrame(() =>
+        resultsRef.current?.scrollIntoView({ behavior: "smooth" })
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         setApiError(
@@ -296,153 +316,119 @@ function App() {
   const branches = coverage.branches ?? [];
   const unsupportedText = describeUnsupported(coverage.unsupported);
   const suggestions = coverage.suggestions ?? [];
+  const lineCount = source.split("\n").length;
 
   // Prefer a useful backend message when no test cases are generated.
   const noTestsMessage =
     results?.message ||
     "No test cases were generated for this program.";
 
+  const backendStatus =
+    backendUp === null
+      ? { tone: "checking", text: "Checking backend..." }
+      : backendUp
+        ? { tone: "online", text: "Backend connected" }
+        : { tone: "offline", text: "Backend offline" };
+
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
           <div className="brand-mark">
-            <Braces size={22} />
+            <GitBranch size={18} />
           </div>
-          <span>BranchLab</span>
+          <div className="brand-text">
+            <strong>BranchLab</strong>
+            <span>AST-based targeted test generation</span>
+          </div>
         </div>
 
-        <div className="sidebar-section-label">WORKSPACE</div>
-
-        <button
-          className="nav-item active"
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        <div
+          className={`backend-pill ${backendStatus.tone}`}
+          title={API_BASE}
         >
-          <Code2 size={18} />
-          <span>Code workspace</span>
-        </button>
-
-        <button className="nav-item" onClick={() => showTab("tests")}>
-          <FlaskConical size={18} />
-          <span>Test results</span>
-        </button>
-
-        <button className="nav-item" onClick={() => showTab("coverage")}>
-          <Gauge size={18} />
-          <span>Coverage report</span>
-        </button>
-
-        <div className="sidebar-bottom">
-          <div className="backend-status">
-            <span
-              className={`status-dot ${
-                backendUp === false ? "offline" : backendUp ? "" : "checking"
-              }`}
-            />
-            <div>
-              <strong>
-                {backendUp === null
-                  ? "Checking backend..."
-                  : backendUp
-                    ? "Backend connected"
-                    : "Backend offline"}
-              </strong>
-              <small>{API_BASE.replace(/^https?:\/\//, "")}</small>
-            </div>
-          </div>
+          <span className="status-dot" />
+          {backendStatus.text}
         </div>
-      </aside>
+      </header>
 
-      <main className="main-area">
-        <header className="topbar">
-          <div className="breadcrumbs">
-            <FolderOpen size={16} />
-            <span>Projects</span>
-            <span className="crumb-divider">/</span>
-            <strong>AST Test Generator</strong>
-          </div>
-
-          <div className="topbar-right">
-            <span className="project-badge">COMPILER DESIGN</span>
-          </div>
-        </header>
-
-        <section className="page-heading">
-          <div>
-            <div className="eyebrow">
-              SOURCE ANALYSIS / TEST GENERATION
-            </div>
-            <h1>Code workspace</h1>
+      <main className="page">
+        <section className="hero">
+          <div className="hero-copy">
+            <h1>Generate tests that reach every branch</h1>
             <p>
-              Generate targeted test cases and inspect program behaviour.
+              Paste a Python, Java or C program. BranchLab reads its syntax
+              tree, finds the conditions that choose each path, and runs
+              boundary tests on both sides of every one.
             </p>
           </div>
 
-          <div className="heading-actions">
+          <div className="hero-actions">
             {running && (
-              <button className="cancel-button" onClick={cancelRun}>
+              <button className="button ghost" onClick={cancelRun}>
                 <XCircle size={16} />
                 Cancel
               </button>
             )}
             <button
-              className="run-button heading-run"
+              className="button primary"
               onClick={runAnalysis}
               disabled={running || !maxCasesValid}
             >
-              <Play size={16} fill="currentColor" />
+              {running ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <Play size={16} fill="currentColor" />
+              )}
               {running ? "Running analysis..." : "Run analysis"}
             </button>
           </div>
         </section>
 
-        <section className="workspace-grid">
-          <div className="editor-panel panel">
-            <div className="panel-titlebar">
-              <div className="file-tab">
-                <FileCode2 size={16} />
-                <span>{selectedLanguage.extension}</span>
-                <span className="unsaved-dot" />
+        <section className="workspace">
+          <div className="card editor-card">
+            <div className="editor-head">
+              <div
+                className="segmented"
+                role="tablist"
+                aria-label="Language"
+              >
+                {LANGUAGES.map((item) => (
+                  <button
+                    key={item.value}
+                    role="tab"
+                    aria-selected={item.value === language}
+                    className={
+                      item.value === language ? "segment active" : "segment"
+                    }
+                    onClick={() => changeLanguage(item.value)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="editor-tools">
-                <span>UTF-8</span>
-                <span>Spaces: 4</span>
-              </div>
-            </div>
-
-            <div className="editor-controls">
-              <label htmlFor="language-select">Language</label>
-              <div className="select-wrap">
-                <select
-                  id="language-select"
-                  value={language}
-                  onChange={(event) => changeLanguage(event.target.value)}
-                >
-                  {LANGUAGES.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={15} />
-              </div>
+              <span className="file-name">
+                <FileCode2 size={15} />
+                {selectedLanguage.extension}
+              </span>
             </div>
 
             <div className="monaco-wrap">
               <Editor
-                height="420px"
+                height="380px"
                 language={language}
                 value={source}
                 onChange={(value) => setSource(value ?? "")}
                 theme="vs"
                 options={{
                   minimap: { enabled: false },
-                  fontSize: 13,
+                  fontSize: 14,
                   lineHeight: 22,
-                  fontFamily: "'Cascadia Code', Consolas, monospace",
+                  fontFamily:
+                    "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
                   lineNumbers: "on",
-                  roundedSelection: false,
+                  roundedSelection: true,
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                   tabSize: 4,
@@ -452,35 +438,34 @@ function App() {
                   overviewRulerBorder: false,
                   hideCursorInOverviewRuler: true,
                   scrollbar: {
-                    verticalScrollbarSize: 9,
-                    horizontalScrollbarSize: 9,
+                    verticalScrollbarSize: 8,
+                    horizontalScrollbarSize: 8,
                   },
                 }}
               />
             </div>
 
-            <div className="editor-footer">
+            <div className="editor-foot">
               <span>
-                <CircleAlert size={14} />
-                Edit source before running
+                {lineCount} {lineCount === 1 ? "line" : "lines"}
               </span>
-              <span>{source.split("\n").length} lines</span>
+              <span>Switching language loads its starter program</span>
             </div>
           </div>
 
-          <aside className="config-panel panel">
-            <div className="panel-heading">
-              <div className="panel-icon">
-                <Settings2 size={18} />
-              </div>
+          <aside className="card config-card">
+            <div className="card-title">
+              <span className="icon-bubble lavender">
+                <SlidersHorizontal size={16} />
+              </span>
               <div>
-                <h2>Test configuration</h2>
-                <p>Choose how tests are generated.</p>
+                <h2>Test settings</h2>
+                <p>Choose how many tests to generate.</p>
               </div>
             </div>
 
-            <div className="form-field">
-              <label htmlFor="max-cases">Maximum test cases</label>
+            <label className="field" htmlFor="max-cases">
+              <span className="field-label">Maximum test cases</span>
               <input
                 id="max-cases"
                 type="number"
@@ -493,157 +478,123 @@ function App() {
                 onChange={(event) => setMaxCasesText(event.target.value)}
               />
               {maxCasesValid ? (
-                <small>Between 1 and 100 test cases</small>
+                <small>Between 1 and 100</small>
               ) : (
                 <small className="field-error">
                   Enter a whole number from 1 to 100
                 </small>
               )}
-            </div>
+            </label>
 
-            <div className="config-divider" />
-
-            <div className="strategy-heading">
-              <h3>Testing strategies</h3>
-            </div>
-
-            <label
-              className="strategy-option"
-            >
-              <input
-                type="checkbox"
+            <div className="field">
+              <span className="field-label">Extra strategies</span>
+              <Toggle
                 checked={invalidTests}
-                onChange={(event) =>
-                  setInvalidTests(event.target.checked)
-                }
+                onChange={setInvalidTests}
+                title="Invalid-input tests"
+                hint="Text, empty values, None and huge numbers"
               />
-              <span className="custom-check" />
-              <span className="strategy-copy">
-                <strong>Invalid-input tests</strong>
-                <small>Try malformed and unexpected values</small>
-              </span>
-            </label>
-
-            <label
-              className="strategy-option"
-            >
-              <input
-                type="checkbox"
+              <Toggle
                 checked={fuzzTests}
-                onChange={(event) =>
-                  setFuzzTests(event.target.checked)
-                }
+                onChange={setFuzzTests}
+                title="Fuzz tests"
+                hint="Seeded random and extreme values"
               />
-              <span className="custom-check" />
-              <span className="strategy-copy">
-                <strong>Fuzz testing</strong>
-                <small>Explore unusual input combinations</small>
-              </span>
-            </label>
-
-            <div className="config-divider" />
-
-            <div className="strategy-note">
-              <Activity size={17} />
-              <p>
-                Targeted tests are generated from supported conditions
-                found during AST analysis. Each extra strategy you turn
-                on reserves about 20% of the maximum.
-              </p>
             </div>
+
+            <p className="note">
+              <Info size={15} />
+              <span>
+                Boundary tests come from the conditions found in your code.
+                Each extra strategy uses about 20% of the maximum.
+              </span>
+            </p>
           </aside>
         </section>
 
         {apiError && (
-          <div className="error-banner">
+          <div className="banner error" role="alert">
             <XCircle size={18} />
             <span>{apiError}</span>
           </div>
         )}
 
-        <section className="results-section" ref={resultsRef}>
-          <div className="results-heading">
-            <div>
-              <div className="eyebrow">ANALYSIS REPORT</div>
-              <h2>Execution results</h2>
-            </div>
-            {results && (
-              <span className="results-ready">Run complete</span>
-            )}
+        <section className="results" ref={resultsRef}>
+          <div className="section-head">
+            <h2>Results</h2>
+            {results && <span className="chip green">Run complete</span>}
           </div>
 
-          <div className="metrics-grid">
+          <div className="metrics">
             <MetricCard
-              label="Total test cases"
+              tone="blue"
+              label="Tests generated"
               value={results ? totalTests : "—"}
               icon={<FlaskConical size={18} />}
             />
             <MetricCard
-              label="Successful executions"
+              tone="green"
+              label="Ran successfully"
               value={results ? executedTests : "—"}
               icon={<CheckCircle2 size={18} />}
             />
             <MetricCard
-              label="Execution errors"
+              tone="amber"
+              label="Errors or rejected input"
               value={results ? failedTests : "—"}
               icon={<CircleAlert size={18} />}
+            />
+            <MetricCard
+              tone="violet"
+              label="Branch coverage"
+              value={
+                !results
+                  ? "—"
+                  : coveragePercent != null
+                    ? `${Number(coveragePercent).toFixed(1)}%`
+                    : "Not measured"
+              }
+              icon={<Gauge size={18} />}
             />
           </div>
 
           {results?.message && testResults.length > 0 && (
-            <div className="info-banner">
-              <Info size={16} />
+            <div className="banner info">
+              <Info size={17} />
               <span>{results.message}</span>
             </div>
           )}
 
-          <div className="results-panel panel">
-            <div className="results-tabs">
-              <button
-                className={
-                  activeTab === "tests"
-                    ? "result-tab selected"
-                    : "result-tab"
-                }
-                onClick={() => setActiveTab("tests")}
-              >
-                <FlaskConical size={16} /> Generated tests
-              </button>
-
-              <button
-                className={
-                  activeTab === "output"
-                    ? "result-tab selected"
-                    : "result-tab"
-                }
-                onClick={() => setActiveTab("output")}
-              >
-                <Terminal size={16} /> Execution output
-              </button>
-
-              <button
-                className={
-                  activeTab === "coverage"
-                    ? "result-tab selected"
-                    : "result-tab"
-                }
-                onClick={() => setActiveTab("coverage")}
-              >
-                <Gauge size={16} /> Coverage
-              </button>
+          <div className="card results-card">
+            <div className="tabs" role="tablist">
+              {RESULT_TABS.map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={activeTab === key}
+                  className={activeTab === key ? "tab active" : "tab"}
+                  onClick={() => setActiveTab(key)}
+                >
+                  <Icon size={15} />
+                  {label}
+                  {key === "tests" && results && (
+                    <span className="tab-count">{totalTests}</span>
+                  )}
+                </button>
+              ))}
             </div>
 
-            <div className="results-content">
-              {activeTab === "tests" && (
-                results ? (
+            <div className="tab-body">
+              {activeTab === "tests" &&
+                (results ? (
                   testResults.length > 0 ? (
                     <div className="table-scroll">
-                      <table className="results-table">
+                      <table className="table">
                         <thead>
                           <tr>
-                            <th>Test</th>
+                            <th>#</th>
                             <th>Type</th>
-                            <th>Input values</th>
+                            <th>Inputs</th>
                             <th>Status</th>
                             <th>Output</th>
                             <th>Error</th>
@@ -652,18 +603,22 @@ function App() {
                         <tbody>
                           {testResults.map((test, index) => {
                             const status = describeStatus(test);
+                            const output = test.output?.trim() || "";
                             return (
                               <tr key={index}>
-                                <td className="test-number">
+                                <td className="muted mono">
                                   {String(index + 1).padStart(2, "0")}
                                 </td>
                                 <td>
-                                  <span className="type-pill">
+                                  <span
+                                    className={`chip ${categoryTone(test.category)}`}
+                                  >
                                     {categoryLabel(test.category)}
                                   </span>
                                 </td>
                                 <td>
                                   <code
+                                    className="clamp"
                                     title={JSON.stringify(test.inputs)}
                                   >
                                     {formatInputs(test.inputs)}
@@ -671,16 +626,23 @@ function App() {
                                 </td>
                                 <td>
                                   <span
-                                    className={`status-pill ${status.tone}`}
+                                    className={`chip ${STATUS_TONES[status.tone]}`}
                                   >
                                     {status.label}
                                   </span>
                                 </td>
-                                <td className="output-cell">
-                                  {test.output?.trim() || "—"}
+                                <td>
+                                  <span className="clamp" title={output}>
+                                    {output || "—"}
+                                  </span>
                                 </td>
-                                <td className="error-cell">
-                                  {test.error || "—"}
+                                <td>
+                                  <span
+                                    className="clamp error-text"
+                                    title={test.error || ""}
+                                  >
+                                    {test.error || "—"}
+                                  </span>
                                 </td>
                               </tr>
                             );
@@ -692,84 +654,88 @@ function App() {
                     <EmptyState message={noTestsMessage} />
                   )
                 ) : (
-                  <EmptyState message="Run your source code to see generated tests here." />
-                )
-              )}
+                  <EmptyState message="Run an analysis to see the generated tests here." />
+                ))}
 
-              {activeTab === "output" && (
-                results ? (
-                  <div className="output-list">
-                    {testResults.map((test, index) => {
-                      const status = describeStatus(test);
-                      return (
-                        <div className="output-entry" key={index}>
-                          <div className="output-entry-heading">
-                            <span>
-                              Test {index + 1} ·{" "}
-                              {categoryLabel(test.category)}
-                            </span>
-                            <span
-                              className={
-                                status.tone === "success"
-                                  ? "mini-status success-text"
-                                  : status.tone === "warning"
-                                    ? "mini-status warning-text"
-                                    : "mini-status error-text"
-                              }
-                            >
-                              {status.label}
-                            </span>
+              {activeTab === "output" &&
+                (results ? (
+                  testResults.length > 0 ? (
+                    <div className="output-list">
+                      {testResults.map((test, index) => {
+                        const status = describeStatus(test);
+                        return (
+                          <div className="output-entry" key={index}>
+                            <div className="output-entry-head">
+                              <span className="output-title">
+                                Test {index + 1}
+                                <span
+                                  className={`chip ${categoryTone(test.category)}`}
+                                >
+                                  {categoryLabel(test.category)}
+                                </span>
+                              </span>
+                              <span
+                                className={`chip ${STATUS_TONES[status.tone]}`}
+                              >
+                                {status.label}
+                              </span>
+                            </div>
+                            <code className="output-inputs">
+                              {formatInputs(test.inputs)}
+                            </code>
+                            <pre>{test.output?.trim() || "(no output)"}</pre>
+                            {test.error && (
+                              <pre className="error-pre">{test.error}</pre>
+                            )}
                           </div>
-                          <pre>{test.output?.trim() || "(no output)"}</pre>
-                          {test.error && (
-                            <pre className="error-pre">{test.error}</pre>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {testResults.length === 0 && (
-                      <EmptyState
-                        message={
-                          results.message ||
-                          "There is no execution output because no tests were generated."
-                        }
-                      />
-                    )}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      message={
+                        results.message ||
+                        "There is no execution output because no tests were generated."
+                      }
+                    />
+                  )
                 ) : (
                   <EmptyState message="Execution output will appear here after a run." />
-                )
-              )}
+                ))}
 
-              {activeTab === "coverage" && (
-                results ? (
+              {activeTab === "coverage" &&
+                (results ? (
                   coveragePercent != null ? (
-                    <div className="coverage-view">
-                      <div className="coverage-number">
-                        {Number(coveragePercent).toFixed(1)}%
+                    <div className="coverage">
+                      <div className="coverage-summary">
+                        <div className="coverage-number">
+                          {Number(coveragePercent).toFixed(1)}
+                          <span>%</span>
+                        </div>
+                        <div className="coverage-bar-wrap">
+                          <div className="coverage-track">
+                            <div
+                              className="coverage-fill"
+                              style={{
+                                width: `${Math.max(
+                                  0,
+                                  Math.min(100, Number(coveragePercent))
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <p>
+                            Every tracked if/while condition has two outcomes,
+                            true and false. This is the share of them the
+                            generated tests actually produced when the
+                            program ran.
+                          </p>
+                        </div>
                       </div>
-                      <div className="coverage-track">
-                        <div
-                          className="coverage-fill"
-                          style={{
-                            width: `${Math.max(
-                              0,
-                              Math.min(100, Number(coveragePercent))
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                      <p>
-                        Each tracked if/while condition has two outcomes,
-                        true and false. The percentage is the share of
-                        those outcomes the generated tests actually
-                        produced when the program ran. The table shows
-                        exactly which ones were seen.
-                      </p>
 
                       {branches.length > 0 && (
-                        <div className="table-scroll coverage-table">
-                          <table className="results-table">
+                        <div className="table-scroll">
+                          <table className="table">
                             <thead>
                               <tr>
                                 <th>Line</th>
@@ -781,19 +747,15 @@ function App() {
                             <tbody>
                               {branches.map((branch, index) => (
                                 <tr key={index}>
-                                  <td className="test-number">
-                                    {branch.line}
-                                  </td>
-                                  <td>{branch.kind ?? "if"}</td>
+                                  <td className="mono">{branch.line}</td>
                                   <td>
-                                    <OutcomeFlag
-                                      seen={branch.true_covered}
-                                    />
+                                    <code>{branch.kind ?? "if"}</code>
                                   </td>
                                   <td>
-                                    <OutcomeFlag
-                                      seen={branch.false_covered}
-                                    />
+                                    <OutcomeFlag seen={branch.true_covered} />
+                                  </td>
+                                  <td>
+                                    <OutcomeFlag seen={branch.false_covered} />
                                   </td>
                                 </tr>
                               ))}
@@ -804,18 +766,22 @@ function App() {
 
                       {suggestions.length > 0 && (
                         <div className="suggestions">
-                          <h3>
-                            <Lightbulb size={16} /> Suggested tests for
-                            missing outcomes
-                          </h3>
-                          <p>
-                            Each suggestion was run once. "Verified" means
-                            it really produced the missing outcome; an
-                            unverified one needs other inputs changed too,
-                            for example to reach a nested condition.
-                          </p>
+                          <div className="card-title">
+                            <span className="icon-bubble amber">
+                              <Lightbulb size={16} />
+                            </span>
+                            <div>
+                              <h3>Suggested tests for missing outcomes</h3>
+                              <p>
+                                Each suggestion was run once. Verified means
+                                it really produced the missing outcome; not
+                                reached means other inputs must change too,
+                                for example to get into a nested condition.
+                              </p>
+                            </div>
+                          </div>
                           <div className="table-scroll">
-                            <table className="results-table">
+                            <table className="table">
                               <thead>
                                 <tr>
                                   <th>Line</th>
@@ -827,24 +793,26 @@ function App() {
                               <tbody>
                                 {suggestions.map((item, index) => (
                                   <tr key={index}>
-                                    <td className="test-number">
-                                      {item.line}
-                                    </td>
-                                    <td>{item.target_outcome}</td>
+                                    <td className="mono">{item.line}</td>
                                     <td>
-                                      <code>{formatInputs(item.inputs)}</code>
+                                      <code>{item.target_outcome}</code>
+                                    </td>
+                                    <td>
+                                      <code className="clamp">
+                                        {formatInputs(item.inputs)}
+                                      </code>
                                     </td>
                                     <td>
                                       <span
                                         className={
                                           item.verified
-                                            ? "outcome-flag seen"
-                                            : "outcome-flag missed"
+                                            ? "chip green"
+                                            : "chip rose"
                                         }
                                       >
                                         {item.verified
-                                          ? "✓ verified"
-                                          : "✗ not reached"}
+                                          ? "Verified"
+                                          : "Not reached"}
                                       </span>
                                     </td>
                                   </tr>
@@ -856,11 +824,10 @@ function App() {
                       )}
 
                       {unsupportedText && (
-                        <div className="warn-note">
-                          <CircleAlert size={15} />
+                        <div className="banner warning">
+                          <CircleAlert size={17} />
                           <span>
-                            Not tracked by branch coverage:{" "}
-                            {unsupportedText}.
+                            Not counted in branch coverage: {unsupportedText}.
                           </span>
                         </div>
                       )}
@@ -875,34 +842,50 @@ function App() {
                     />
                   )
                 ) : (
-                  <EmptyState message="Run an analysis to view coverage information." />
-                )
-              )}
+                  <EmptyState message="Run an analysis to see branch coverage." />
+                ))}
             </div>
           </div>
         </section>
-
-        <footer className="app-footer">
-          <span>BranchLab · Compiler Design Project</span>
-          <span>Local development environment</span>
-        </footer>
       </main>
+
+      <footer className="footer">
+        BranchLab · AST-Based Targeted Test Case Generation · Compiler Design
+        Project
+      </footer>
     </div>
+  );
+}
+
+function Toggle({ checked, onChange, title, hint }) {
+  return (
+    <label className={checked ? "toggle on" : "toggle"}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="toggle-copy">
+        <strong>{title}</strong>
+        <small>{hint}</small>
+      </span>
+      <span className="switch" aria-hidden="true" />
+    </label>
   );
 }
 
 function OutcomeFlag({ seen }) {
   return (
-    <span className={seen ? "outcome-flag seen" : "outcome-flag missed"}>
-      {seen ? "✓ seen" : "✗ not seen"}
+    <span className={seen ? "chip green" : "chip rose"}>
+      {seen ? "Seen" : "Not seen"}
     </span>
   );
 }
 
-function MetricCard({ label, value, icon }) {
+function MetricCard({ label, value, icon, tone }) {
   return (
-    <div className="metric-card">
-      <div className="metric-icon">{icon}</div>
+    <div className={`metric ${tone}`}>
+      <span className="metric-icon">{icon}</span>
       <div>
         <div className="metric-label">{label}</div>
         <div className="metric-value">{value}</div>
@@ -914,9 +897,9 @@ function MetricCard({ label, value, icon }) {
 function EmptyState({ message }) {
   return (
     <div className="empty-state">
-      <div className="empty-icon">
-        <Code2 size={22} />
-      </div>
+      <span className="icon-bubble lavender">
+        <Code2 size={20} />
+      </span>
       <p>{message}</p>
     </div>
   );
