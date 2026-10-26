@@ -8,9 +8,30 @@ from pathlib import Path
 import tree_sitter
 import tree_sitter_java
 
+from src.core.input_order import reorder
 from src.core.interfaces import LanguageAdapter
+from src.languages.input_plan import (
+    InputPlan,
+    assigned_name,
+    node_text,
+    stdin_text,
+)
 from src.core.models import Condition, TestCase, TestResult
 
+
+# Scanner and BufferedReader methods that consume one value from stdin.
+READ_METHODS = {
+    "next",
+    "nextInt",
+    "nextLong",
+    "nextShort",
+    "nextByte",
+    "nextDouble",
+    "nextFloat",
+    "nextBoolean",
+    "nextLine",
+    "readLine",
+}
 
 NUMERIC_LITERALS = {
     "decimal_integer_literal",
@@ -139,6 +160,66 @@ class JavaAdapter(LanguageAdapter):
         visit(tree.root_node)
         return conditions
 
+    def input_plan(self, source_code: str) -> InputPlan:
+        """Find stdin reads and args[n] positions in the source."""
+        source_bytes = source_code.encode("utf-8")
+        tree = self.parser.parse(source_bytes)
+        plan = InputPlan()
+        reads: list[tuple[int, str]] = []
+        args_name = "args"
+
+        def find_args_name(node):
+            nonlocal args_name
+            if node.type == "method_declaration":
+                name = node.child_by_field_name("name")
+                parameters = node.child_by_field_name("parameters")
+                if (
+                    name is not None
+                    and parameters is not None
+                    and node_text(name, source_bytes) == "main"
+                ):
+                    for parameter in parameters.named_children:
+                        parameter_name = parameter.child_by_field_name("name")
+                        if parameter_name is not None:
+                            args_name = node_text(parameter_name, source_bytes)
+                            return
+            for child in node.children:
+                find_args_name(child)
+
+        def visit(node):
+            if node.type == "method_invocation":
+                method = node.child_by_field_name("name")
+                if (
+                    method is not None
+                    and node_text(method, source_bytes) in READ_METHODS
+                ):
+                    name = assigned_name(node, source_bytes)
+                    if name:
+                        reads.append((node.start_byte, name))
+
+            elif node.type == "array_access":
+                array = node.child_by_field_name("array")
+                index = node.child_by_field_name("index")
+                if (
+                    array is not None
+                    and index is not None
+                    and node_text(array, source_bytes) == args_name
+                    and index.type == "decimal_integer_literal"
+                ):
+                    name = assigned_name(node, source_bytes)
+                    if name:
+                        plan.positions.setdefault(
+                            name, int(node_text(index, source_bytes))
+                        )
+
+            for child in node.children:
+                visit(child)
+
+        find_args_name(tree.root_node)
+        visit(tree.root_node)
+        plan.read_order = list(dict.fromkeys(name for _, name in sorted(reads)))
+        return plan
+
     def execute(
         self,
         source_code: str,
@@ -197,8 +278,9 @@ class JavaAdapter(LanguageAdapter):
                         or "Java compilation failed."
                     )
 
+                plan = self.input_plan(source_code)
                 return [
-                    self._run_case(class_name, temp_dir, case)
+                    self._run_case(class_name, temp_dir, case, plan)
                     for case in test_cases
                 ]
 
@@ -210,16 +292,31 @@ class JavaAdapter(LanguageAdapter):
         class_name: str,
         temp_dir: str,
         test_case: TestCase,
+        plan: InputPlan,
     ) -> TestResult:
-        """Run an already compiled Java class for one test case."""
+        """Run an already compiled Java class for one test case.
+
+        Each value is offered three ways: as a system property, at the
+        args index the program reads it from, and on standard input.
+        """
         properties = [
             f"-D{key}={value}"
             for key, value in test_case.inputs.items()
         ]
 
+        arguments: list[str] = []
+        if plan.positions:
+            arguments = ["0"] * (max(plan.positions.values()) + 1)
+            for name, position in plan.positions.items():
+                if name in test_case.inputs:
+                    arguments[position] = str(test_case.inputs[name])
+
         try:
             run_result = subprocess.run(
-                ["java", *properties, "-cp", temp_dir, class_name],
+                ["java", *properties, "-cp", temp_dir, class_name, *arguments],
+                input=stdin_text(
+                    reorder(test_case.inputs, plan.read_order).values()
+                ),
                 capture_output=True,
                 text=True,
                 timeout=10,

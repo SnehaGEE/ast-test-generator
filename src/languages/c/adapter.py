@@ -8,7 +8,14 @@ from pathlib import Path
 import tree_sitter
 import tree_sitter_c
 
+from src.core.input_order import reorder
 from src.core.interfaces import LanguageAdapter
+from src.languages.input_plan import (
+    InputPlan,
+    assigned_name,
+    node_text,
+    stdin_text,
+)
 from src.core.models import Condition, TestCase, TestResult
 
 
@@ -121,6 +128,63 @@ class CAdapter(LanguageAdapter):
         visit(tree.root_node)
         return conditions
 
+    def input_plan(self, source_code: str) -> InputPlan:
+        """Find scanf targets and argv[n] positions in the source."""
+        source_bytes = source_code.encode("utf-8")
+        tree = self.parser.parse(source_bytes)
+        plan = InputPlan()
+        reads: list[tuple[int, str]] = []
+
+        def visit(node):
+            if node.type == "call_expression":
+                function = node.child_by_field_name("function")
+                arguments = node.child_by_field_name("arguments")
+
+                if (
+                    function is not None
+                    and arguments is not None
+                    and node_text(function, source_bytes) == "scanf"
+                ):
+                    # Skip the format string; collect &name arguments.
+                    for argument in arguments.named_children[1:]:
+                        target = argument.child_by_field_name("argument")
+                        if (
+                            argument.type == "pointer_expression"
+                            and target is not None
+                            and target.type == "identifier"
+                        ):
+                            reads.append(
+                                (
+                                    argument.start_byte,
+                                    node_text(target, source_bytes),
+                                )
+                            )
+
+            elif node.type == "subscript_expression":
+                array = node.child_by_field_name("argument")
+                index = node.child_by_field_name("index")
+
+                if (
+                    array is not None
+                    and index is not None
+                    and node_text(array, source_bytes) == "argv"
+                    and index.type == "number_literal"
+                ):
+                    name = assigned_name(node, source_bytes)
+                    try:
+                        position = int(node_text(index, source_bytes), 0)
+                    except ValueError:
+                        position = None
+                    if name and position:
+                        plan.positions.setdefault(name, position)
+
+            for child in node.children:
+                visit(child)
+
+        visit(tree.root_node)
+        plan.read_order = list(dict.fromkeys(name for _, name in sorted(reads)))
+        return plan
+
     def execute(self, source_code: str, test_case: TestCase) -> TestResult:
         """Compile and execute C source with test inputs as command-line arguments."""
         return self.execute_many(source_code, [test_case])[0]
@@ -166,8 +230,9 @@ class CAdapter(LanguageAdapter):
                         or "C compilation failed."
                     )
 
+                plan = self.input_plan(source_code)
                 return [
-                    self._run_case(executable_path, temp_dir, case)
+                    self._run_case(executable_path, temp_dir, case, plan)
                     for case in test_cases
                 ]
 
@@ -179,16 +244,26 @@ class CAdapter(LanguageAdapter):
         executable_path: Path,
         temp_dir: str,
         test_case: TestCase,
+        plan: InputPlan,
     ) -> TestResult:
         """Run an already compiled C program for one test case."""
         # argc is not an argument; it is the argument count plus
-        # the program name. Sort keys so the other values are
-        # passed in a predictable order.
-        arguments = [
-            str(value)
-            for key, value in sorted(test_case.inputs.items())
+        # the program name.
+        values = {
+            key: value
+            for key, value in test_case.inputs.items()
             if key != "argc"
-        ]
+        }
+
+        if plan.positions:
+            # Put each value at the argv index the program reads it from.
+            arguments = ["0"] * max(plan.positions.values())
+            for name, position in plan.positions.items():
+                if name in values:
+                    arguments[position - 1] = str(values[name])
+        else:
+            # Unknown layout: pass values in alphabetical order.
+            arguments = [str(value) for _, value in sorted(values.items())]
 
         argc = test_case.inputs.get("argc")
 
@@ -203,6 +278,9 @@ class CAdapter(LanguageAdapter):
         try:
             run_result = subprocess.run(
                 [str(executable_path), *arguments],
+                input=stdin_text(
+                    reorder(values, plan.read_order).values()
+                ),
                 capture_output=True,
                 text=True,
                 timeout=10,
