@@ -122,11 +122,24 @@ class JavaAdapter(LanguageAdapter):
         test_case: TestCase,
     ) -> TestResult:
         """Compile and execute Java source using JVM system properties."""
+        return self.execute_many(source_code, [test_case])[0]
+
+    def execute_many(
+        self,
+        source_code: str,
+        test_cases: list[TestCase],
+    ) -> list[TestResult]:
+        """Compile Java source once, then run every test case against it."""
+
+        def fail_all(error: str) -> list[TestResult]:
+            return [
+                TestResult(inputs=case.inputs, executed=False, error=error)
+                for case in test_cases
+            ]
+
         if shutil.which("javac") is None or shutil.which("java") is None:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error="Java JDK tools javac and java must be available on PATH.",
+            return fail_all(
+                "Java JDK tools javac and java must be available on PATH."
             )
 
         class_match = re.search(
@@ -134,11 +147,7 @@ class JavaAdapter(LanguageAdapter):
             source_code,
         )
         if not class_match:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error="Java source must declare a public class.",
-            )
+            return fail_all("Java source must declare a public class.")
 
         class_name = class_match.group(1)
 
@@ -147,53 +156,57 @@ class JavaAdapter(LanguageAdapter):
                 source_path = Path(temp_dir) / f"{class_name}.java"
                 source_path.write_text(source_code, encoding="utf-8")
 
-                compile_result = subprocess.run(
-                    ["javac", str(source_path)],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                    cwd=temp_dir,
-                )
+                try:
+                    compile_result = subprocess.run(
+                        ["javac", str(source_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                        cwd=temp_dir,
+                    )
+                except subprocess.TimeoutExpired:
+                    return fail_all("Java compilation timed out.")
 
                 if compile_result.returncode != 0:
-                    return TestResult(
-                        inputs=test_case.inputs,
-                        executed=False,
-                        error=compile_result.stderr.strip()
+                    return fail_all(
+                        compile_result.stderr.strip()
                         or compile_result.stdout.strip()
-                        or "Java compilation failed.",
+                        or "Java compilation failed."
                     )
 
-                properties = [
-                    f"-D{key}={value}"
-                    for key, value in test_case.inputs.items()
+                return [
+                    self._run_case(class_name, temp_dir, case)
+                    for case in test_cases
                 ]
 
-                run_result = subprocess.run(
-                    ["java", *properties, "-cp", temp_dir, class_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    cwd=temp_dir,
-                )
+        except OSError as error:
+            return fail_all(f"{type(error).__name__}: {error}")
 
-                return TestResult(
-                    inputs=test_case.inputs,
-                    executed=run_result.returncode == 0,
-                    output=run_result.stdout,
-                    error=run_result.stderr.strip()
-                    or (
-                        None
-                        if run_result.returncode == 0
-                        else f"Java exited with code {run_result.returncode}."
-                    ),
-                )
+    def _run_case(
+        self,
+        class_name: str,
+        temp_dir: str,
+        test_case: TestCase,
+    ) -> TestResult:
+        """Run an already compiled Java class for one test case."""
+        properties = [
+            f"-D{key}={value}"
+            for key, value in test_case.inputs.items()
+        ]
 
+        try:
+            run_result = subprocess.run(
+                ["java", *properties, "-cp", temp_dir, class_name],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=temp_dir,
+            )
         except subprocess.TimeoutExpired:
             return TestResult(
                 inputs=test_case.inputs,
                 executed=False,
-                error="Java compilation or execution timed out.",
+                error="Java execution timed out.",
             )
         except OSError as error:
             return TestResult(
@@ -201,6 +214,18 @@ class JavaAdapter(LanguageAdapter):
                 executed=False,
                 error=f"{type(error).__name__}: {error}",
             )
+
+        return TestResult(
+            inputs=test_case.inputs,
+            executed=run_result.returncode == 0,
+            output=run_result.stdout,
+            error=run_result.stderr.strip()
+            or (
+                None
+                if run_result.returncode == 0
+                else f"Java exited with code {run_result.returncode}."
+            ),
+        )
 
     def execute_and_verify(
         self,

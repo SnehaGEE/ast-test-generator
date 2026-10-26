@@ -27,13 +27,12 @@ def run_java_test_suite(
         max_cases=max_cases,
     )
 
-    results: list[TestResult] = []
-
-    for inputs in input_cases:
-        test_case = TestCase(
+    test_cases = [
+        TestCase(
             inputs=inputs,
             description="AST-derived Java boundary test",
         )
-        results.append(adapter.execute(source_code, test_case))
+        for inputs in input_cases
+    ]
 
-    return results
+    return adapter.execute_many(source_code, test_cases)

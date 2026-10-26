@@ -123,12 +123,23 @@ class CAdapter(LanguageAdapter):
 
     def execute(self, source_code: str, test_case: TestCase) -> TestResult:
         """Compile and execute C source with test inputs as command-line arguments."""
+        return self.execute_many(source_code, [test_case])[0]
+
+    def execute_many(
+        self,
+        source_code: str,
+        test_cases: list[TestCase],
+    ) -> list[TestResult]:
+        """Compile C source once, then run every test case against it."""
+
+        def fail_all(error: str) -> list[TestResult]:
+            return [
+                TestResult(inputs=case.inputs, executed=False, error=error)
+                for case in test_cases
+            ]
+
         if shutil.which("gcc") is None:
-            return TestResult(
-                inputs=test_case.inputs,
-                executed=False,
-                error="GCC must be available on PATH.",
-            )
+            return fail_all("GCC must be available on PATH.")
 
         try:
             with tempfile.TemporaryDirectory(prefix="ast_test_c_") as temp_dir:
@@ -137,74 +148,71 @@ class CAdapter(LanguageAdapter):
 
                 source_path.write_text(source_code, encoding="utf-8")
 
-                compile_result = subprocess.run(
-                    ["gcc", str(source_path), "-o", str(executable_path)],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                    cwd=temp_dir,
-                )
+                try:
+                    compile_result = subprocess.run(
+                        ["gcc", str(source_path), "-o", str(executable_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                        cwd=temp_dir,
+                    )
+                except subprocess.TimeoutExpired:
+                    return fail_all("C compilation timed out.")
 
                 if compile_result.returncode != 0:
-                    return TestResult(
-                        inputs=test_case.inputs,
-                        executed=False,
-                        error=(
-                            compile_result.stderr.strip()
-                            or compile_result.stdout.strip()
-                            or "C compilation failed."
-                        ),
+                    return fail_all(
+                        compile_result.stderr.strip()
+                        or compile_result.stdout.strip()
+                        or "C compilation failed."
                     )
 
-                # argc is not an argument; it is the argument count plus
-                # the program name. Sort keys so the other values are
-                # passed in a predictable order.
-                arguments = [
-                    str(value)
-                    for key, value in sorted(test_case.inputs.items())
-                    if key != "argc"
+                return [
+                    self._run_case(executable_path, temp_dir, case)
+                    for case in test_cases
                 ]
 
-                argc = test_case.inputs.get("argc")
+        except OSError as error:
+            return fail_all(f"{type(error).__name__}: {error}")
 
-                if isinstance(argc, int) and not isinstance(argc, bool):
-                    # Make the program see exactly this argc: drop extra
-                    # arguments, or pad with "0" when more are needed.
-                    wanted = max(argc - 1, 0)
-                    arguments = arguments[:wanted] + [
-                        "0"
-                    ] * (wanted - len(arguments))
+    def _run_case(
+        self,
+        executable_path: Path,
+        temp_dir: str,
+        test_case: TestCase,
+    ) -> TestResult:
+        """Run an already compiled C program for one test case."""
+        # argc is not an argument; it is the argument count plus
+        # the program name. Sort keys so the other values are
+        # passed in a predictable order.
+        arguments = [
+            str(value)
+            for key, value in sorted(test_case.inputs.items())
+            if key != "argc"
+        ]
 
-                run_result = subprocess.run(
-                    [str(executable_path), *arguments],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    cwd=temp_dir,
-                )
+        argc = test_case.inputs.get("argc")
 
-                return TestResult(
-                    inputs=test_case.inputs,
-                    executed=run_result.returncode == 0,
-                    output=run_result.stdout,
-                    error=(
-                        run_result.stderr.strip()
-                        or (
-                            None
-                            if run_result.returncode == 0
-                            else (
-                                "C program exited with code "
-                                f"{run_result.returncode}."
-                            )
-                        )
-                    ),
-                )
+        if isinstance(argc, int) and not isinstance(argc, bool):
+            # Make the program see exactly this argc: drop extra
+            # arguments, or pad with "0" when more are needed.
+            wanted = max(argc - 1, 0)
+            arguments = arguments[:wanted] + [
+                "0"
+            ] * (wanted - len(arguments))
 
+        try:
+            run_result = subprocess.run(
+                [str(executable_path), *arguments],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=temp_dir,
+            )
         except subprocess.TimeoutExpired:
             return TestResult(
                 inputs=test_case.inputs,
                 executed=False,
-                error="C compilation or execution timed out.",
+                error="C program execution timed out.",
             )
         except OSError as error:
             return TestResult(
@@ -212,6 +220,23 @@ class CAdapter(LanguageAdapter):
                 executed=False,
                 error=f"{type(error).__name__}: {error}",
             )
+
+        return TestResult(
+            inputs=test_case.inputs,
+            executed=run_result.returncode == 0,
+            output=run_result.stdout,
+            error=(
+                run_result.stderr.strip()
+                or (
+                    None
+                    if run_result.returncode == 0
+                    else (
+                        "C program exited with code "
+                        f"{run_result.returncode}."
+                    )
+                )
+            ),
+        )
 
     def execute_and_verify(
         self,

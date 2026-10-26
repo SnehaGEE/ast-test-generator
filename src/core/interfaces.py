@@ -26,3 +26,14 @@ class LanguageAdapter(ABC):
     ) -> TestResult:
         """Execute a test case and return its result."""
         pass
+
+    def execute_many(
+        self,
+        source_code: str,
+        test_cases: list[TestCase],
+    ) -> list[TestResult]:
+        """Execute several test cases; compiled languages build once."""
+        return [
+            self.execute(source_code, test_case)
+            for test_case in test_cases
+        ]
