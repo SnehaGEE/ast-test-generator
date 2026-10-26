@@ -1011,3 +1011,123 @@ input:disabled {
     flex-direction: column;
   }
 }
+/* ---- additions: messages, per-branch coverage, statuses, cancel ---- */
+
+.heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cancel-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 14px;
+  color: #a44747;
+  background: #ffffff;
+  border: 1px solid #ecc9c7;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.cancel-button:hover {
+  background: #fff3f2;
+}
+
+.field-error {
+  color: #a44747 !important;
+}
+
+.form-field input[aria-invalid="true"] {
+  border-color: #d98a87;
+}
+
+.info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 17px;
+  padding: 12px 14px;
+  color: #2f5a88;
+  background: #eef4fb;
+  border: 1px solid #d6e4f4;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.info-banner svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.type-pill {
+  display: inline-block;
+  padding: 4px 7px;
+  color: #4d6684;
+  background: #eef3f9;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-pill.warning {
+  color: #8a6420;
+  background: #fff6e5;
+}
+
+.warning-text {
+  color: #8a6420;
+}
+
+.coverage-table {
+  margin-top: 20px;
+  border: 1px solid #e7edf4;
+  border-radius: 7px;
+}
+
+.outcome-flag {
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.outcome-flag.seen {
+  color: #2e765d;
+}
+
+.outcome-flag.missed {
+  color: #a44747;
+}
+
+.warn-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 11px 13px;
+  color: #8a6420;
+  background: #fff9ee;
+  border: 1px solid #f3e3c1;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.warn-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+@media (max-width: 700px) {
+  .heading-actions {
+    width: 100%;
+  }
+
+  .heading-actions .heading-run {
+    flex: 1;
+  }
+}
