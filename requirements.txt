@@ -1,3 +1,12 @@
-tree-sitter
-tree-sitter-java
-tree-sitter-c
+# Backend API
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.7
+
+# Java and C parsing
+tree-sitter>=0.23
+tree-sitter-java>=0.23
+tree-sitter-c>=0.23
+
+# Tests
+pytest>=8.0
