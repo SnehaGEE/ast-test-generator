@@ -12,6 +12,40 @@ from src.core.interfaces import LanguageAdapter
 from src.core.models import Condition, TestCase, TestResult
 
 
+NUMERIC_LITERALS = {
+    "decimal_integer_literal",
+    "decimal_floating_point_literal",
+}
+
+
+def _numeric_value(node, source_bytes: bytes):
+    """Return the value of a numeric literal such as -5, +3, 5L or 2.5f.
+
+    Returns None when the node is not a supported numeric literal.
+    """
+    sign = 1
+
+    if node.type == "unary_expression" and len(node.children) == 2:
+        operator, operand = node.children
+        if operator.type not in {"-", "+"}:
+            return None
+        sign = -1 if operator.type == "-" else 1
+        node = operand
+
+    if node.type not in NUMERIC_LITERALS:
+        return None
+
+    text = source_bytes[node.start_byte:node.end_byte].decode("utf-8")
+    text = text.replace("_", "").rstrip("lLfFdD")
+
+    try:
+        if node.type == "decimal_floating_point_literal":
+            return sign * float(text)
+        return sign * int(text)
+    except ValueError:
+        return None
+
+
 class JavaAdapter(LanguageAdapter):
     """Java adapter using Tree-sitter for syntax parsing."""
 
@@ -76,24 +110,13 @@ class JavaAdapter(LanguageAdapter):
                         left_node.start_byte:left_node.end_byte
                     ].decode("utf-8")
 
-                    right_text = source_bytes[
-                        right_node.start_byte:right_node.end_byte
-                    ].decode("utf-8")
+                    value = _numeric_value(right_node, source_bytes)
 
                     if (
                         operator in supported_operators
                         and left_node.type == "identifier"
-                        and right_node.type in {
-                            "decimal_integer_literal",
-                            "decimal_floating_point_literal",
-                        }
+                        and value is not None
                     ):
-                        value = (
-                            float(right_text)
-                            if "." in right_text
-                            else int(right_text)
-                        )
-
                         conditions.append(
                             Condition(
                                 variable=left_text,
