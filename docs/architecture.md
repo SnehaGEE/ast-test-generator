@@ -70,18 +70,35 @@ code.
 
 ## 3. Delivering inputs
 
-Generated inputs are keyed by name, but programs read by position. The
-adapters find the read positions in the AST (`src/core/input_order.py`,
-`src/languages/input_plan.py`):
+Generated inputs are keyed by name, but programs read by position, and
+different branches read different values. Each program is turned into a
+**read map** (`src/core/read_paths.py`): its reads in order, plus the
+branches that decide which reads happen.
 
-| Language | Read order | Command-line positions |
-| --- | --- | --- |
-| Python | assignments from `input()` | none |
-| Java | variables assigned from `Scanner`/`BufferedReader` reads | `args[n]` |
-| C | `&name` arguments of `scanf` | `argv[n]` |
+| Item | Meaning |
+| --- | --- |
+| `Read(name, kind)` | one read; `name` is `None` when the value is not stored in a variable |
+| `Branch(var, op, value, then, otherwise)` | `if`/`else` on `var op number` |
+| `Switch(var, cases)` | `switch`/`match` on `var`; C/Java cases fall through without `break` |
 
-Values go to standard input one per line in read order, and to the
-command line at the detected indexes. Java also receives every value as a
+Builders: Python in `src/core/input_order.py` (`input()`,
+`int(input())`, `match`, `if`); Java and C share
+`src/languages/tree_sitter_reads.py`, with hooks for their read calls
+(`Scanner`/`BufferedReader`; `scanf` conversions). The walk starts at
+`main`, and a call to a function defined in the file adds that function's
+reads at the call site.
+
+For each test, `answers()` follows the branches its values decide and
+answers exactly the reads on that path: the generated value where there is
+one, otherwise a placeholder of the read's kind (`1`, `1.0`, `test`). A
+branch that cannot be decided keeps the reads of every side. A Scanner
+`nextLine()` right after a token read returns the rest of that line and
+gets no answer. Generated values for variables the program never reads go
+last, as a fallback.
+
+Answers go to standard input one per line (Python's worker answers
+`input()` from the same list), and values also go to the command line at
+detected `argv[n]`/`args[n]` indexes. Java also receives every value as a
 system property, and Python as a global variable. Standard input is always
 supplied, so a program waiting for input never hangs on the server's own
 stdin.

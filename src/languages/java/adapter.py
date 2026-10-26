@@ -7,7 +7,7 @@ from pathlib import Path
 import tree_sitter
 import tree_sitter_java
 
-from src.core.input_order import answer_inputs
+from src.core.read_paths import Read, answers
 from src.languages.branch_probes import Branch, insert_probes
 from src.languages.compiled import (
     COMPILE_TIMEOUT_SECONDS,
@@ -20,6 +20,7 @@ from src.languages.input_plan import (
     stdin_text,
 )
 from src.languages.tree_sitter_conditions import extract_conditions
+from src.languages.tree_sitter_reads import ReadMapBuilder
 from src.core.models import Condition, TestCase
 
 
@@ -143,6 +144,56 @@ def _read_kind(node, source_bytes: bytes) -> str:
     return "str"
 
 
+# Scanner methods that read one token and leave the rest of the line.
+TOKEN_METHODS = {
+    "next",
+    "nextInt",
+    "nextLong",
+    "nextShort",
+    "nextByte",
+    "nextDouble",
+    "nextFloat",
+    "nextBoolean",
+}
+
+
+def _java_reads(node, source_bytes: bytes):
+    """The read a Scanner/BufferedReader call makes, or None."""
+    if node.type != "method_invocation":
+        return None
+    method = node.child_by_field_name("name")
+    name = node_text(method, source_bytes) if method is not None else ""
+    if name not in READ_METHODS:
+        return None
+    return [
+        Read(
+            None,
+            _read_kind(node, source_bytes),
+            token=name in TOKEN_METHODS,
+            rest_of_line=name == "nextLine",
+        )
+    ]
+
+
+def _java_callee(node, source_bytes: bytes):
+    """Name of a method of this class called as name(...) or this.name(...)."""
+    if node.type != "method_invocation":
+        return None
+    target = node.child_by_field_name("object")
+    if target is not None and node_text(target, source_bytes) != "this":
+        return None
+    method = node.child_by_field_name("name")
+    return node_text(method, source_bytes) if method is not None else None
+
+
+def _java_definition(node, source_bytes: bytes):
+    name = node.child_by_field_name("name")
+    body = node.child_by_field_name("body")
+    if name is None or body is None:
+        return None
+    return node_text(name, source_bytes), body
+
+
 class JavaAdapter(CompiledLanguageAdapter):
     """Java adapter using Tree-sitter for syntax parsing."""
 
@@ -183,7 +234,6 @@ class JavaAdapter(CompiledLanguageAdapter):
         source_bytes = source_code.encode("utf-8")
         tree = self.parser.parse(source_bytes)
         plan = InputPlan()
-        reads: list[tuple[int, str, str]] = []
         args_name = "args"
 
         def find_args_name(node):
@@ -205,23 +255,7 @@ class JavaAdapter(CompiledLanguageAdapter):
                 find_args_name(child)
 
         def visit(node):
-            if node.type == "method_invocation":
-                method = node.child_by_field_name("name")
-                if (
-                    method is not None
-                    and node_text(method, source_bytes) in READ_METHODS
-                ):
-                    name = assigned_name(node, source_bytes)
-                    if name:
-                        reads.append(
-                            (
-                                node.start_byte,
-                                name,
-                                _read_kind(node, source_bytes),
-                            )
-                        )
-
-            elif node.type == "array_access":
+            if node.type == "array_access":
                 array = node.child_by_field_name("array")
                 index = node.child_by_field_name("index")
                 if (
@@ -241,10 +275,13 @@ class JavaAdapter(CompiledLanguageAdapter):
 
         find_args_name(tree.root_node)
         visit(tree.root_node)
-        for _, name, kind in sorted(reads):
-            if name not in plan.kinds:
-                plan.read_order.append(name)
-                plan.kinds[name] = kind
+        plan.read_map = ReadMapBuilder(
+            source_bytes,
+            reads=lambda node: _java_reads(node, source_bytes),
+            callee=lambda node: _java_callee(node, source_bytes),
+            definition=lambda node: _java_definition(node, source_bytes),
+            numeric_value=lambda node: _numeric_value(node, source_bytes),
+        ).build(tree.root_node)
         return plan
 
     def missing_tools(self) -> str | None:
@@ -318,9 +355,5 @@ class JavaAdapter(CompiledLanguageAdapter):
                 if name in test_case.inputs:
                     arguments[position] = str(test_case.inputs[name])
 
-        stdin = stdin_text(
-            answer_inputs(
-                test_case.inputs, plan.read_order, plan.kinds
-            ).values()
-        )
+        stdin = stdin_text(answers(plan.read_map, test_case.inputs))
         return ["java", *properties, "-cp", temp_dir, target, *arguments], stdin

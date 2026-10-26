@@ -15,13 +15,12 @@ _STOP_NODES = {"compound_statement", "block", "translation_unit", "program"}
 class InputPlan:
     """Where a program reads each variable from.
 
-    read_order: variables read from standard input, in source order.
-    kinds: what each stdin read expects: "int", "float", "str" or "bool".
+    read_map: the program's standard-input reads and the branches that
+        decide them (see src/core/read_paths.py).
     positions: command-line index per variable (argv[1] -> 1, args[0] -> 0).
     """
 
-    read_order: list[str] = field(default_factory=list)
-    kinds: dict[str, str] = field(default_factory=dict)
+    read_map: list = field(default_factory=list)
     positions: dict[str, int] = field(default_factory=dict)
 
 

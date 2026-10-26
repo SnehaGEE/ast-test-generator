@@ -22,12 +22,13 @@ def _last_line(text):
     return lines[-1][:300] if lines else ""
 
 
-def execute_test_case(source_code, variable_values, timeout=3):
+def execute_test_case(source_code, variable_values, timeout=3, answers=None):
     """Execute Python source with supplied test inputs in a child process.
 
     The program runs in a separate Python process so that a program which
     never finishes can be killed when the timeout expires. Returns a dict
-    with success, input, output and error.
+    with success, input, output and error. answers, if given, are what
+    each input() call returns, in order.
     """
 
     try:
@@ -42,9 +43,10 @@ def execute_test_case(source_code, variable_values, timeout=3):
         )
 
     try:
-        payload = json.dumps(
-            {"source": source_code, "inputs": variable_values}
-        )
+        request = {"source": source_code, "inputs": variable_values}
+        if answers is not None:
+            request["answers"] = [str(answer) for answer in answers]
+        payload = json.dumps(request)
     except (TypeError, ValueError) as error:
         return _failure(
             f"Test inputs could not be passed to the sandbox: {error}",

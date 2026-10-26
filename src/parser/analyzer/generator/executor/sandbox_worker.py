@@ -53,7 +53,12 @@ def main() -> None:
     values = request["inputs"]
 
     output = _CappedOutput()
-    input_values = iter(str(value) for value in values.values())
+    # "answers" lists what each input() call returns, in order; without
+    # it the values are handed out in dict order.
+    answers = request.get("answers")
+    if answers is None:
+        answers = [str(value) for value in values.values()]
+    input_values = iter(answers)
 
     def mock_input(prompt=""):
         output.write(str(prompt))

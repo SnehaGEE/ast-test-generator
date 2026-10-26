@@ -25,8 +25,7 @@ class _LimitExceeded(BaseException):
 
 def _make_input(inputs: dict[str, Any], source_code: str):
     """Provide input() values in the order the program reads them."""
-    ordered = python_answers(source_code, inputs)
-    values = iter(str(value) for value in ordered.values())
+    values = iter(python_answers(source_code, inputs))
 
     def fake_input(prompt: str = "") -> str:
         return next(values, "")

@@ -15,7 +15,7 @@ a React web interface backed by a FastAPI server.
 | Step | What happens |
 | --- | --- |
 | 1. Parse | Python uses the standard `ast` module; Java and C use Tree-sitter. |
-| 2. Analyze | Finds `variable <op> constant` comparisons in `if`/`elif`/`else if` and `while` conditions (plus `do`-`while` in Java and C), including `and`/`or`/`not`, reversed operands (`10 <= x`) and signed or suffixed literals (`-5`, `0x1F`, `5L`, `2.5f`). |
+| 2. Analyze | Finds `variable <op> constant` comparisons in `if`/`elif`/`else if` and `while` conditions (plus `do`-`while` in Java and C), including `and`/`or`/`not`, reversed operands (`10 <= x`) and signed or suffixed literals (`-5`, `0x1F`, `5L`, `2.5f`). Each `switch`/`match` case counts as `variable == value`, so every option of a menu gets tested. |
 | 3. Generate | Picks boundary values for each comparison, e.g. `age >= 18` gives 17, 18, 19, and combines variables into at most *max cases* test inputs. |
 | 4. Execute | Runs every test and records output, errors, exit codes and timeouts. Each value reaches the variable it belongs to (see below). Java and C are compiled once per run. |
 | 5. Measure | Records which true/false outcome of each `if`/`while` condition really happened at runtime. |
@@ -73,11 +73,23 @@ find *where* the program reads each variable and supplies the value there:
 
 | Language | Standard input | Command line | Other |
 | --- | --- | --- | --- |
-| Python | `x = int(input())`, in the order the assignments appear | | Also set as global variables. |
-| Java | `Scanner.nextInt()`, `next()`, `nextLine()`..., `BufferedReader.readLine()`, in source order | `args[0]`, `args[1]`... at the index the program uses | Also passed as system properties: `System.getProperty("x")`. The source must declare a `public class`. |
-| C | `scanf("%d", &x)`, in source order | `argv[1]`, `argv[2]`... at the index the program uses (alphabetical order if none is found) | A variable named `argc` sets the argument count. |
+| Python | `input()` calls, including `int(input())` and `float(input())` | | Also set as global variables. |
+| Java | `Scanner` reads (`nextInt()`, `next()`, `nextLine()`...) and `BufferedReader.readLine()` | `args[0]`, `args[1]`... at the index the program uses | Also passed as system properties: `System.getProperty("x")`. The source must declare a `public class`. |
+| C | `scanf` conversions (`%d`, `%f`, `%s`, `%[...]`...) | `argv[1]`, `argv[2]`... at the index the program uses (alphabetical order if none is found) | A variable named `argc` sets the argument count. |
 
-Values on standard input are one per line.
+Standard input gets one value per line, following the program's own path:
+
+- **Every read gets an answer.** A read with no generated value (a name,
+  an id) gets a placeholder of the right kind (`1`, `1.0`, `test`), so the
+  values after it still reach the right variable.
+- **Each branch gets its own reads.** If option 1 of a menu reads
+  `no, name, amount` and option 2 reads `no, amount`, a test for option 2
+  answers exactly those two. `switch`/`match` and `if (x == 2)` style
+  branches are followed, including C/Java `case` fall-through.
+- **Helper functions count.** Reads inside a function the program calls
+  (`amount = read_amount()`) are answered where the call happens.
+- **Java's `nextLine()` after `nextInt()`** returns the rest of the
+  number's line, and is not given an answer of its own.
 
 See [`examples/`](examples/) for ready-to-paste programs in each language.
 
@@ -110,9 +122,13 @@ counts, a `message`, and `coverage`, which holds `branches`,
   loops, `do`-`while` loops, `switch`/`match`, conditional expressions
   (`?:`, `a if c else b`) and comprehension filters run normally but are
   **not** counted; the interface lists them when present.
+- **One run, one set of values.** Behaviour that needs several actions
+  in a row (create an account, *then* deposit into it) is not generated;
+  such branches show as missing, with suggestions marked *not reached*.
 - Input positions are found from common patterns (see the table above).
-  Values read through helper functions or other APIs may not reach the
-  intended variable.
+  Reads through other APIs (`getchar`, `fgets`, `Console`), or branches
+  decided by something other than `variable op number`, keep the reads of
+  every side, which can misalign later values.
 - Java and C coverage works by compiling a probed copy of the program.
   If that copy does not compile, the tests run on the original program
   and coverage is shown as not measured.

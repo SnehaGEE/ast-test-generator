@@ -8,7 +8,7 @@ from pathlib import Path
 import tree_sitter
 import tree_sitter_c
 
-from src.core.input_order import answer_inputs
+from src.core.read_paths import Read, answers
 from src.languages.branch_probes import Branch, insert_probes
 from src.languages.compiled import (
     COMPILE_TIMEOUT_SECONDS,
@@ -21,6 +21,7 @@ from src.languages.input_plan import (
     stdin_text,
 )
 from src.languages.tree_sitter_conditions import extract_conditions
+from src.languages.tree_sitter_reads import ReadMapBuilder
 from src.core.models import Condition, TestCase
 
 
@@ -70,6 +71,61 @@ def _scanf_kinds(format_literal: str) -> list[str]:
         else:
             kinds.append("str")
     return kinds
+
+
+def _c_reads(node, source_bytes: bytes):
+    """Reads a call makes: one per scanf conversion, or None if not a read.
+
+    &name and char-array arguments name their read; other targets such as
+    &list[i] still consume a value, with no name.
+    """
+    if node.type != "call_expression":
+        return None
+    function = node.child_by_field_name("function")
+    arguments = node.child_by_field_name("arguments")
+    if (
+        function is None
+        or arguments is None
+        or node_text(function, source_bytes) != "scanf"
+        or not arguments.named_children
+    ):
+        return None
+
+    format_node, *targets = arguments.named_children
+    reads = []
+    for argument, kind in zip(targets, _scanf_kinds(node_text(format_node, source_bytes))):
+        target = (
+            argument.child_by_field_name("argument")
+            if argument.type == "pointer_expression"
+            else argument
+        )
+        name = (
+            node_text(target, source_bytes)
+            if target is not None and target.type == "identifier"
+            else None
+        )
+        reads.append(Read(name, kind))
+    return reads
+
+
+def _c_callee(node, source_bytes: bytes):
+    if node.type != "call_expression":
+        return None
+    function = node.child_by_field_name("function")
+    if function is None or function.type != "identifier":
+        return None
+    return node_text(function, source_bytes)
+
+
+def _c_definition(node, source_bytes: bytes):
+    """(name, body) of a function definition, through pointer declarators."""
+    declarator = node.child_by_field_name("declarator")
+    while declarator is not None and declarator.type != "identifier":
+        declarator = declarator.child_by_field_name("declarator")
+    body = node.child_by_field_name("body")
+    if declarator is None or body is None:
+        return None
+    return node_text(declarator, source_bytes), body
 
 
 def _parse_c_number(text: str):
@@ -153,41 +209,13 @@ class CAdapter(CompiledLanguageAdapter):
         )
 
     def input_plan(self, source_code: str) -> InputPlan:
-        """Find scanf targets and argv[n] positions in the source."""
+        """Find the program's reads (as a read map) and argv[n] positions."""
         source_bytes = source_code.encode("utf-8")
         tree = self.parser.parse(source_bytes)
         plan = InputPlan()
-        reads: list[tuple[int, str, str]] = []
 
         def visit(node):
-            if node.type == "call_expression":
-                function = node.child_by_field_name("function")
-                arguments = node.child_by_field_name("arguments")
-
-                if (
-                    function is not None
-                    and arguments is not None
-                    and node_text(function, source_bytes) == "scanf"
-                ):
-                    # Pair each conversion in the format string with its
-                    # argument: &name for numbers, name for char arrays.
-                    format_node, *targets = arguments.named_children
-                    kinds = _scanf_kinds(node_text(format_node, source_bytes))
-                    for argument, kind in zip(targets, kinds):
-                        if argument.type == "pointer_expression":
-                            target = argument.child_by_field_name("argument")
-                        else:
-                            target = argument
-                        if target is not None and target.type == "identifier":
-                            reads.append(
-                                (
-                                    argument.start_byte,
-                                    node_text(target, source_bytes),
-                                    kind,
-                                )
-                            )
-
-            elif node.type == "subscript_expression":
+            if node.type == "subscript_expression":
                 array = node.child_by_field_name("argument")
                 index = node.child_by_field_name("index")
 
@@ -209,10 +237,13 @@ class CAdapter(CompiledLanguageAdapter):
                 visit(child)
 
         visit(tree.root_node)
-        for _, name, kind in sorted(reads):
-            if name not in plan.kinds:
-                plan.read_order.append(name)
-                plan.kinds[name] = kind
+        plan.read_map = ReadMapBuilder(
+            source_bytes,
+            reads=lambda node: _c_reads(node, source_bytes),
+            callee=lambda node: _c_callee(node, source_bytes),
+            definition=lambda node: _c_definition(node, source_bytes),
+            numeric_value=lambda node: _numeric_value(node, source_bytes),
+        ).build(tree.root_node)
         return plan
 
     def missing_tools(self) -> str | None:
@@ -292,7 +323,5 @@ class CAdapter(CompiledLanguageAdapter):
                 "0"
             ] * (wanted - len(arguments))
 
-        stdin = stdin_text(
-            answer_inputs(values, plan.read_order, plan.kinds).values()
-        )
+        stdin = stdin_text(answers(plan.read_map, values))
         return [str(target), *arguments], stdin

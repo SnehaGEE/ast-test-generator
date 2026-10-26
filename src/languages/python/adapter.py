@@ -61,9 +61,11 @@ class PythonAdapter(LanguageAdapter):
         test_case: TestCase,
     ) -> TestResult:
         """Execute a test case and normalize its result."""
-        # The worker answers input() calls in dict order.
-        ordered = python_answers(source_code, test_case.inputs)
-        result = execute_test_case(source_code, ordered)
+        result = execute_test_case(
+            source_code,
+            test_case.inputs,
+            answers=python_answers(source_code, test_case.inputs),
+        )
 
         return TestResult(
             inputs=test_case.inputs,
