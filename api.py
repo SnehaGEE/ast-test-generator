@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.core.multi_language_runner import run_test_suite
-from src.core.test_runner import run_python_test_suite
 
 
 app = FastAPI(
@@ -46,19 +45,13 @@ def run_tests(request: TestRequest) -> dict[str, Any]:
         )
 
     try:
-        if language == "python":
-            result = run_python_test_suite(
-                source_code=request.source_code,
-                max_cases=request.max_cases,
-                include_invalid_inputs=request.include_invalid_inputs,
-                include_fuzz_inputs=request.include_fuzz_inputs,
-            )
-        else:
-            result = run_test_suite(
-                source_code=request.source_code,
-                language=language,
-                max_cases=request.max_cases,
-            )
+        result = run_test_suite(
+            source_code=request.source_code,
+            language=language,
+            max_cases=request.max_cases,
+            include_invalid_inputs=request.include_invalid_inputs,
+            include_fuzz_inputs=request.include_fuzz_inputs,
+        )
 
         return {
             "language": language,

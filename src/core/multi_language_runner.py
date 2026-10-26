@@ -3,23 +3,37 @@ from typing import Any
 
 from src.core.models import TestCase, TestResult
 from src.core.targeted_generator import generate_targeted_inputs
-from src.coverage.coverage_analyzer import analyze_branch_coverage
-from src.languages.python.adapter import PythonAdapter
+from src.core.test_runner import run_python_test_suite
 from src.languages.java.adapter import JavaAdapter
 from src.languages.c.adapter import CAdapter
 
 
-ADAPTERS = {
-    "python": PythonAdapter,
+COMPILED_ADAPTERS = {
     "java": JavaAdapter,
     "c": CAdapter,
 }
+
+SUPPORTED_LANGUAGES = {"python", *COMPILED_ADAPTERS}
+
+
+def _not_measured(language: str) -> dict[str, Any]:
+    return {
+        "success": False,
+        "error": (
+            f"Runtime branch coverage is not yet measured "
+            f"for {language}."
+        ),
+        "branches": [],
+        "branch_coverage_percent": None,
+    }
 
 
 def run_test_suite(
     source_code: str,
     language: str = "python",
     max_cases: int = 100,
+    include_invalid_inputs: bool = False,
+    include_fuzz_inputs: bool = False,
 ) -> dict[str, Any]:
     """Generate and execute targeted tests for a supported language."""
 
@@ -28,39 +42,44 @@ def run_test_suite(
 
     language = language.lower().strip()
 
-    if language not in ADAPTERS:
+    if language not in SUPPORTED_LANGUAGES:
         raise ValueError(
             f"Unsupported language: {language}. "
             "Choose python, java, or c."
         )
 
-    adapter = ADAPTERS[language]()
+    if language == "python":
+        return run_python_test_suite(
+            source_code=source_code,
+            max_cases=max_cases,
+            include_invalid_inputs=include_invalid_inputs,
+            include_fuzz_inputs=include_fuzz_inputs,
+        )
+
+    adapter = COMPILED_ADAPTERS[language]()
     adapter.parse(source_code)
     conditions = adapter.analyze(source_code)
+    coverage = _not_measured(language)
+
+    messages = []
+    if include_invalid_inputs or include_fuzz_inputs:
+        messages.append(
+            "Invalid-input and fuzz tests are only available for Python."
+        )
 
     if not conditions:
-        if language == "python":
-            coverage = analyze_branch_coverage(source_code, [])
-        else:
-            coverage = {
-                "success": False,
-                "error": (
-                    f"Runtime branch coverage is not yet measured "
-                    f"for {language}."
-                ),
-                "branches": [],
-                "branch_coverage_percent": None,
-            }
-
         return {
             "results": [],
             "total_tests": 0,
             "successful_executions": 0,
             "failed_executions": 0,
             "coverage": coverage,
-            "message": (
-                "No supported conditions were detected; "
-                "no targeted tests were generated."
+            "message": " ".join(
+                [
+                    "No supported conditions were detected; "
+                    "no targeted tests were generated.",
+                    *messages,
+                ]
             ),
         }
 
@@ -89,22 +108,8 @@ def run_test_suite(
     results: list[TestResult] = adapter.execute_many(
         source_code, test_cases
     )
-
-    if language == "python":
-        coverage = analyze_branch_coverage(
-            source_code,
-            input_cases,
-        )
-    else:
-        coverage = {
-            "success": False,
-            "error": (
-                f"Runtime branch coverage is not yet measured "
-                f"for {language}."
-            ),
-            "branches": [],
-            "branch_coverage_percent": None,
-        }
+    for result in results:
+        result.category = "targeted"
 
     return {
         "results": results,
@@ -116,11 +121,5 @@ def run_test_suite(
             not result.executed for result in results
         ),
         "coverage": coverage,
-        "message": (
-            None
-            if language == "python" and coverage["success"]
-            else coverage.get("error")
-            if language != "python"
-            else coverage.get("error")
-        ),
+        "message": " ".join([coverage["error"], *messages]),
     }
