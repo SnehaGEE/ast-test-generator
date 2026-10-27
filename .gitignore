@@ -22,3 +22,5 @@ Thumbs.db
 
 # Generated results
 results/
+# Office lock files (created while a document is open)
+~$*
