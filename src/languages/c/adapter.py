@@ -9,7 +9,7 @@ import tree_sitter
 import tree_sitter_c
 
 from src.core.read_paths import Read, answers
-from src.languages.branch_probes import Branch, insert_probes
+from src.languages.branch_probes import Branch, Statement, instrument_source
 from src.languages.compiled import (
     COMPILE_TIMEOUT_SECONDS,
     CompiledLanguageAdapter,
@@ -44,6 +44,21 @@ static int __branchlab_probe(int id, int outcome)
         }
     }
     return outcome;
+}
+static char __branchlab_lines[LINE_COUNT];
+static void __branchlab_line(int line)
+{
+    if (!__branchlab_lines[line]) {
+        const char *path = getenv("BRANCHLAB_PROBE_FILE");
+        __branchlab_lines[line] = 1;
+        if (path != NULL) {
+            FILE *file = fopen(path, "a");
+            if (file != NULL) {
+                fprintf(file, "L %d\n", line);
+                fclose(file);
+            }
+        }
+    }
 }
 #line 1
 """
@@ -272,18 +287,27 @@ class CAdapter(CompiledLanguageAdapter):
             )
         return executable_path, None
 
-    def add_probes(self, source_bytes: bytes, branches: list[Branch]) -> str:
-        """Prepend the probe function and wrap every condition.
+    def add_probes(
+        self,
+        source_bytes: bytes,
+        branches: list[Branch],
+        statements: list[Statement],
+    ) -> str:
+        """Prepend the probe functions; probe every condition and statement.
 
         `#line 1` makes compiler messages use the original line numbers.
         """
-        prelude = PROBE_PRELUDE.replace("BRANCH_COUNT", str(len(branches)))
-        body = insert_probes(
+        prelude = PROBE_PRELUDE.replace(
+            "BRANCH_COUNT", str(max(len(branches), 1))
+        ).replace("LINE_COUNT", str(source_bytes.count(b"\n") + 2))
+        body = instrument_source(
             source_bytes,
             branches,
+            statements,
             lambda branch_id, condition: (
                 f"__branchlab_probe({branch_id}, ({condition}) ? 1 : 0)"
             ),
+            lambda line: f"__branchlab_line({line});",
         )
         return prelude + body
 

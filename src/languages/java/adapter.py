@@ -8,7 +8,7 @@ import tree_sitter
 import tree_sitter_java
 
 from src.core.read_paths import Read, answers
-from src.languages.branch_probes import Branch, insert_probes
+from src.languages.branch_probes import Branch, Statement, instrument_source
 from src.languages.compiled import (
     COMPILE_TIMEOUT_SECONDS,
     CompiledLanguageAdapter,
@@ -44,6 +44,21 @@ final class __BranchLabProbe {
             }
         }
         return value;
+    }
+
+    private static final boolean[] LINES = new boolean[LINE_COUNT];
+
+    static synchronized void line(int n) {
+        if (!LINES[n]) {
+            LINES[n] = true;
+            String path = System.getenv("BRANCHLAB_PROBE_FILE");
+            if (path != null) {
+                try (java.io.FileWriter out = new java.io.FileWriter(path, true)) {
+                    out.write("L " + n + "\n");
+                } catch (java.io.IOException ignored) {
+                }
+            }
+        }
     }
 }
 """
@@ -317,19 +332,28 @@ class JavaAdapter(CompiledLanguageAdapter):
             )
         return class_name, None
 
-    def add_probes(self, source_bytes: bytes, branches: list[Branch]) -> str:
-        """Wrap every condition and append the probe class.
+    def add_probes(
+        self,
+        source_bytes: bytes,
+        branches: list[Branch],
+        statements: list[Statement],
+    ) -> str:
+        """Probe every condition and statement; append the probe class.
 
         The class goes after the program so line numbers do not change.
         """
-        body = insert_probes(
+        body = instrument_source(
             source_bytes,
             branches,
+            statements,
             lambda branch_id, condition: (
                 f"__BranchLabProbe.hit({branch_id}, ({condition}))"
             ),
+            lambda line: f"__BranchLabProbe.line({line});",
         )
-        return body + PROBE_CLASS.replace("BRANCH_COUNT", str(len(branches)))
+        return body + PROBE_CLASS.replace(
+            "BRANCH_COUNT", str(max(len(branches), 1))
+        ).replace("LINE_COUNT", str(source_bytes.count(b"\n") + 2))
 
     def run_command(
         self,

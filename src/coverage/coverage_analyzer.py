@@ -133,6 +133,56 @@ def measure_line_coverage(
     }
 
 
+def summarize_statements(
+    statement_lines: set[int],
+    executed_lines: set[int],
+) -> dict[str, Any]:
+    """Statement coverage in the shape every language reports."""
+    covered = statement_lines & executed_lines
+    total = len(statement_lines)
+    return {
+        "statements": {
+            "covered": len(covered),
+            "total": total,
+            "missed_lines": sorted(statement_lines - executed_lines),
+        },
+        "statement_coverage_percent": (
+            round(len(covered) / total * 100, 2) if total else None
+        ),
+    }
+
+
+def _is_docstring(node: ast.stmt, parent: ast.AST) -> bool:
+    body = getattr(parent, "body", None)
+    return (
+        isinstance(parent, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and body
+        and body[0] is node
+        and isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
+def python_statement_lines(tree: ast.AST) -> set[int]:
+    """Lines of the statements that can run.
+
+    global/nonlocal declarations and docstrings produce no code, so a
+    tracer never sees them run; they are left out.
+    """
+    lines: set[int] = set()
+    for parent in ast.walk(tree):
+        for node in ast.iter_child_nodes(parent):
+            if not isinstance(node, ast.stmt):
+                continue
+            if isinstance(node, (ast.Global, ast.Nonlocal)):
+                continue
+            if _is_docstring(node, parent):
+                continue
+            lines.add(node.lineno)
+    return lines
+
+
 def _collect_branch_nodes(tree: ast.AST) -> list[ast.AST]:
     """Return if/while nodes in a deterministic order.
 
@@ -173,6 +223,7 @@ def analyze_branch_coverage(
         }
 
     conditions = _collect_branch_nodes(tree)
+    executed_lines: set[int] = set()
 
     # Use IDs internally so multiple conditions on one line
     # are counted separately.
@@ -262,7 +313,9 @@ def analyze_branch_coverage(
 
             with contextlib.redirect_stdout(io.StringIO()):
                 sys.settrace(
-                    _make_deadline_tracer(filename, time_limit)
+                    _make_deadline_tracer(
+                        filename, time_limit, on_line=executed_lines.add
+                    )
                 )
                 try:
                     exec(compiled, namespace)
@@ -311,6 +364,7 @@ def analyze_branch_coverage(
         "error": None,
         "branches": branches,
         "branch_coverage_percent": round(percentage, 2),
+        **summarize_statements(python_statement_lines(tree), executed_lines),
     }
 
 

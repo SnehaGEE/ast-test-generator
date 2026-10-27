@@ -349,6 +349,8 @@ function App() {
   const branches = coverage.branches ?? [];
   const unsupportedText = describeUnsupported(coverage.unsupported);
   const suggestions = coverage.suggestions ?? [];
+  const statementPercent = coverage.statement_coverage_percent;
+  const statements = coverage.statements;
   const lineCount = source.split("\n").length;
 
   // Prefer a useful backend message when no test cases are generated.
@@ -603,6 +605,11 @@ function App() {
                     ? `${Number(coveragePercent).toFixed(1)}%`
                     : "Not measured"
               }
+              detail={
+                statementPercent != null
+                  ? `Statements: ${Number(statementPercent).toFixed(1)}%`
+                  : null
+              }
               icon={<Gauge size={18} />}
             />
           </div>
@@ -782,6 +789,26 @@ function App() {
                         </div>
                       </div>
 
+                      {statementPercent != null && statements && (
+                        <div className="statement-summary">
+                          <div className="statement-number">
+                            {Number(statementPercent).toFixed(1)}
+                            <span>%</span>
+                          </div>
+                          <div>
+                            <h3>Statement coverage</h3>
+                            <p>
+                              {statements.covered} of {statements.total}{" "}
+                              statements ran at least once.
+                              {statements.missed_lines.length > 0 &&
+                                ` Never ran: line${
+                                  statements.missed_lines.length === 1 ? "" : "s"
+                                } ${statements.missed_lines.join(", ")}.`}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {branches.length > 0 && (
                         <div className="table-scroll">
                           <table className="table">
@@ -931,13 +958,14 @@ function OutcomeFlag({ seen }) {
   );
 }
 
-function MetricCard({ label, value, icon, tone }) {
+function MetricCard({ label, value, icon, tone, detail }) {
   return (
     <div className={`metric ${tone}`}>
       <span className="metric-icon">{icon}</span>
       <div>
         <div className="metric-label">{label}</div>
         <div className="metric-value">{value}</div>
+        {detail && <div className="metric-detail">{detail}</div>}
       </div>
     </div>
   );

@@ -13,7 +13,9 @@ from src.core.models import TestCase, TestResult
 from src.languages.branch_probes import (
     PROBE_FILE_VARIABLE,
     Branch,
+    Statement,
     find_branches,
+    find_statements,
     find_untracked,
     read_probe_hits,
     summarize_coverage,
@@ -39,6 +41,7 @@ class CompiledProgram:
         target: Any = None,
         plan: InputPlan | None = None,
         branches: list[Branch] | None = None,
+        statement_lines: set[int] | None = None,
         error: str | None = None,
         coverage_error: str | None = None,
     ) -> None:
@@ -47,6 +50,7 @@ class CompiledProgram:
         self.target = target
         self.plan = plan or InputPlan()
         self.branches = branches or []
+        self.statement_lines = statement_lines or set()
         self.error = error
         self.coverage_error = coverage_error
         self._runs = 0
@@ -116,8 +120,10 @@ class CompiledProgram:
                 or "The program did not compile, so coverage was not measured.",
                 "branches": [],
                 "branch_coverage_percent": None,
+                "statements": None,
+                "statement_coverage_percent": None,
             }
-        return summarize_coverage(self.branches, hits)
+        return summarize_coverage(self.branches, hits, self.statement_lines)
 
 
 class CompiledLanguageAdapter(LanguageAdapter):
@@ -151,20 +157,28 @@ class CompiledLanguageAdapter(LanguageAdapter):
         """Return the command line and stdin text for one test case."""
 
     @abstractmethod
-    def add_probes(self, source_bytes: bytes, branches: list[Branch]) -> str:
-        """Return the source with every branch condition probed."""
+    def add_probes(
+        self,
+        source_bytes: bytes,
+        branches: list[Branch],
+        statements: list[Statement],
+    ) -> str:
+        """Return the source with every condition and statement probed."""
 
     @abstractmethod
     def input_plan(self, source_code: str) -> InputPlan:
         """Find where the program reads each variable from."""
 
-    def instrument(self, source_code: str) -> tuple[str, list[Branch]]:
-        """Return probed source and the branches it tracks."""
+    def instrument(self, source_code: str) -> tuple[str, list[Branch], set[int]]:
+        """Return probed source, its branches and its statement lines."""
         source_bytes = source_code.encode("utf-8")
-        branches = find_branches(self.parser.parse(source_bytes).root_node)
-        if not branches:
-            return source_code, []
-        return self.add_probes(source_bytes, branches), branches
+        root = self.parser.parse(source_bytes).root_node
+        branches = find_branches(root)
+        statements = find_statements(root, source_bytes, branches)
+        if not branches and not statements:
+            return source_code, [], set()
+        probed = self.add_probes(source_bytes, branches, statements)
+        return probed, branches, {statement.line for statement in statements}
 
     def untracked(self, source_code: str) -> list[dict[str, Any]]:
         """Constructs that run normally but are not counted in coverage."""
@@ -184,15 +198,16 @@ class CompiledLanguageAdapter(LanguageAdapter):
         with tempfile.TemporaryDirectory(prefix=self.temp_prefix) as temp_dir:
             coverage_error = None
             try:
-                probed, branches = self.instrument(source_code)
+                probed, branches, statement_lines = self.instrument(source_code)
                 target, error = self.build(temp_dir, probed)
 
-                if error is not None and branches:
+                if error is not None and probed != source_code:
                     # Rebuild without probes. If the program itself is
                     # broken, this reports its own errors, not the
                     # probed text; otherwise the tests still run.
                     target, error = self.build(temp_dir, source_code)
                     branches = []
+                    statement_lines = set()
                     coverage_error = PROBE_BUILD_FAILED
             except subprocess.TimeoutExpired:
                 yield CompiledProgram(
@@ -211,6 +226,7 @@ class CompiledLanguageAdapter(LanguageAdapter):
                 target=target,
                 plan=plan,
                 branches=branches,
+                statement_lines=statement_lines,
                 error=error,
                 coverage_error=coverage_error,
             )
