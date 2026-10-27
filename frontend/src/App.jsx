@@ -20,7 +20,9 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+// In development the API runs separately; a production build is served by the API itself.
+const API_BASE =
+  import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 const API_URL = `${API_BASE}/api/run`;
 const HEALTH_URL = `${API_BASE}/api/health`;
 const HEALTH_INTERVAL_MS = 15000;

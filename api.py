@@ -1,7 +1,10 @@
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.core.multi_language_runner import run_test_suite
@@ -20,9 +23,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# A public deployment runs whatever code visitors paste, so keep requests small.
+MAX_SOURCE_CHARS = 50_000
+FRONTEND_DIST = Path(
+    os.environ.get("BRANCHLAB_FRONTEND_DIST", Path(__file__).parent / "frontend" / "dist")
+)
+
 
 class TestRequest(BaseModel):
-    source_code: str = Field(min_length=1)
+    source_code: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
     language: str = "python"
     max_cases: int = Field(default=20, ge=1, le=100)
     include_invalid_inputs: bool = False
@@ -84,3 +93,14 @@ def run_tests(request: TestRequest) -> dict[str, Any]:
             status_code=500,
             detail=f"Test generation failed: {error}",
         ) from error
+
+def serve_frontend(application: FastAPI, directory: Path) -> None:
+    """Serve the built React app at / so one server hosts the whole site.
+
+    Mounted after the API routes, so /api/... still reaches them.
+    """
+    if (directory / "index.html").is_file():
+        application.mount("/", StaticFiles(directory=directory, html=True), name="frontend")
+
+
+serve_frontend(app, FRONTEND_DIST)

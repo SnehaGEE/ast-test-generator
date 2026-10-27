@@ -54,6 +54,23 @@ Open http://localhost:5173. The sidebar shows **Backend connected** when
 the API is reachable. To use another API address, set `VITE_API_URL`
 (for example in `frontend/.env.local`).
 
+## Deploying (Render)
+
+The `Dockerfile` builds the React app and serves it from the API, with GCC
+and a Java JDK installed, so the whole site runs as one web service.
+
+1. Push the repository to GitHub.
+2. On [Render](https://render.com), choose **New > Blueprint** and pick the
+   repository. `render.yaml` creates a free web service from the `dev` branch.
+3. Wait for the first build (a few minutes), then open the `onrender.com` URL.
+
+Free services sleep after 15 minutes without visits; the next visit takes
+about a minute to wake. Every push to the branch redeploys automatically.
+
+Anyone with the link can run code on the server. Programs run as an
+unprivileged user with time limits and a 50,000-character size limit, but
+this is not a security sandbox, so share the link only with people you trust.
+
 ## Evaluation: AST-targeted vs random testing
 
 ```powershell

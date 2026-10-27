@@ -1,6 +1,8 @@
 # tests/test_api.py
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import api
 
@@ -52,3 +54,25 @@ def test_python_syntax_error_is_a_400():
     with pytest.raises(HTTPException) as error:
         _run(source_code="if x >:\n    pass\n", language="python")
     assert error.value.status_code == 400
+
+
+def test_oversized_source_is_rejected():
+    with pytest.raises(ValidationError):
+        api.TestRequest(source_code="x = 1\n" * 20000)
+
+
+def test_built_frontend_is_served_beside_the_api(tmp_path):
+    (tmp_path / "index.html").write_text("<p>BranchLab</p>", encoding="utf-8")
+    app = FastAPI()
+    app.get("/api/health")(api.health)
+    api.serve_frontend(app, tmp_path)
+    client = TestClient(app)
+
+    assert "BranchLab" in client.get("/").text
+    assert client.get("/api/health").json() == {"status": "ok"}
+
+
+def test_missing_frontend_build_is_skipped(tmp_path):
+    app = FastAPI()
+    api.serve_frontend(app, tmp_path / "dist")
+    assert TestClient(app).get("/").status_code == 404

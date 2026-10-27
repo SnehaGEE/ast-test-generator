@@ -1,0 +1,9 @@
+# Render Blueprint: New > Blueprint, then pick this repository.
+services:
+  - type: web
+    name: branchlab
+    runtime: docker
+    plan: free
+    branch: dev
+    healthCheckPath: /api/health
+    autoDeploy: true
