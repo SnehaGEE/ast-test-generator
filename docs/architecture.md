@@ -142,6 +142,14 @@ Constructs that run but are not counted (`for`, `do`-`while`,
 `switch`/`match`, conditional expressions, comprehension filters) are
 listed in `coverage.unsupported` and shown in the interface.
 
+**Statement coverage** is reported beside it (`statement_coverage_percent`,
+`statements.missed_lines`): the share of the program's statements that ran
+at least once. Python counts AST statements and records executed lines in
+the same tracer (`global`/`nonlocal` and docstrings produce no code and are
+left out). Java and C put a `__line(n)` probe before each statement; a
+single-statement `if`/`else`/loop body is wrapped as `{ probe; stmt }` so
+it is counted without changing what runs.
+
 ## 6. Coverage suggestions
 
 `suggest_missing_branch_tests` proposes a boundary value for each missing
@@ -180,3 +188,20 @@ reaches is shown as *not reached* rather than presented as a fix.
 | `test_executor_sandbox.py`, `test_time_limits.py`, `test_compile_once.py` | Process isolation, time limits, one build per run |
 | `test_api.py`, `test_run_test_suite_delegation.py` | API and runner wiring |
 | `test_examples.py` | Every demo program, checked output by output |
+
+## 9. Evaluation
+
+`src/evaluation/` compares BranchLab with random testing
+(`python -m src.evaluation.evaluate`, results in `docs/evaluation/`):
+
+- `random_baseline.py`: uniform integers in [-1000, 1000] for the same
+  input variables, one reproducible suite per seed, with as many tests as
+  the targeted suite.
+- `mutation.py`: fault detection. At each `variable op number` comparison
+  it makes three mutants (operator off by one, constant + 1, constant - 1),
+  builds each once, runs every suite's inputs on it, and counts a mutant as
+  killed by a suite when some test's output, exit status or first error
+  line differs from the original program's. Mutants that do not compile
+  are reported, not scored.
+- `evaluate.py`: per program, branch and statement coverage, mutation
+  score and generation time for the targeted suite and the random mean.

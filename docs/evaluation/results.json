@@ -1,0 +1,362 @@
+[
+  {
+    "program": "examples/python/grade.py",
+    "language": "python",
+    "conditions": 5,
+    "tests": 15,
+    "mutants": 15,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 0.48
+    },
+    "random": {
+      "branch": 29.17,
+      "statement": 43.33,
+      "mutation": 0.0,
+      "generation_ms": 0.04,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 62.5,
+          "statement": 70.0,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 12.5,
+          "statement": 30.0,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 12.5,
+          "statement": 30.0,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/python/thermostat.py",
+    "language": "python",
+    "conditions": 2,
+    "tests": 6,
+    "mutants": 6,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 0.57
+    },
+    "random": {
+      "branch": 75.0,
+      "statement": 83.33,
+      "mutation": 0.0,
+      "generation_ms": 0.04,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 75.0,
+          "statement": 83.33,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 75.0,
+          "statement": 83.33,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 75.0,
+          "statement": 83.33,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/python/countdown.py",
+    "language": "python",
+    "conditions": 1,
+    "tests": 3,
+    "mutants": 3,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 1.42
+    },
+    "random": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 0.05,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 100.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 100.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 100.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/python/nested_login.py",
+    "language": "python",
+    "conditions": 2,
+    "tests": 9,
+    "mutants": 6,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 0.55
+    },
+    "random": {
+      "branch": 83.33,
+      "statement": 90.47,
+      "mutation": 0.0,
+      "generation_ms": 0.05,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 75.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 75.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/java/Grade.java",
+    "language": "java",
+    "conditions": 5,
+    "tests": 15,
+    "mutants": 15,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 19.15
+    },
+    "random": {
+      "branch": 29.17,
+      "statement": 43.33,
+      "mutation": 2.22,
+      "generation_ms": 0.21,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 62.5,
+          "statement": 70.0,
+          "mutation": 6.67
+        },
+        {
+          "seed": "random-2",
+          "branch": 12.5,
+          "statement": 30.0,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 12.5,
+          "statement": 30.0,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/java/Thermostat.java",
+    "language": "java",
+    "conditions": 2,
+    "tests": 6,
+    "mutants": 6,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 4.63
+    },
+    "random": {
+      "branch": 75.0,
+      "statement": 85.71,
+      "mutation": 0.0,
+      "generation_ms": 0.25,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 75.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 75.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 75.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/c/grade.c",
+    "language": "c",
+    "conditions": 5,
+    "tests": 15,
+    "mutants": 15,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 5.81
+    },
+    "random": {
+      "branch": 29.17,
+      "statement": 48.48,
+      "mutation": 0.0,
+      "generation_ms": 0.18,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 62.5,
+          "statement": 72.73,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 12.5,
+          "statement": 36.36,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 12.5,
+          "statement": 36.36,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/c/countdown.c",
+    "language": "c",
+    "conditions": 1,
+    "tests": 3,
+    "mutants": 3,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 1.68
+    },
+    "random": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 0.13,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 100.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 100.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 100.0,
+          "statement": 100.0,
+          "mutation": 100.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "examples/c/bank.c",
+    "language": "c",
+    "conditions": 12,
+    "tests": 20,
+    "mutants": 12,
+    "stillborn": 0,
+    "ast": {
+      "branch": 48.0,
+      "statement": 69.66,
+      "mutation": 50.0,
+      "generation_ms": 22.37
+    },
+    "random": {
+      "branch": 6.0,
+      "statement": 15.17,
+      "mutation": 11.11,
+      "generation_ms": 0.08,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 6.0,
+          "statement": 15.17,
+          "mutation": 16.67
+        },
+        {
+          "seed": "random-2",
+          "branch": 6.0,
+          "statement": 15.17,
+          "mutation": 8.33
+        },
+        {
+          "seed": "random-3",
+          "branch": 6.0,
+          "statement": 15.17,
+          "mutation": 8.33
+        }
+      ]
+    }
+  }
+]

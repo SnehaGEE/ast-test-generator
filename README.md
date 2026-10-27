@@ -18,7 +18,7 @@ a React web interface backed by a FastAPI server.
 | 2. Analyze | Finds `variable <op> constant` comparisons in `if`/`elif`/`else if` and `while` conditions (plus `do`-`while` in Java and C), including `and`/`or`/`not`, reversed operands (`10 <= x`) and signed or suffixed literals (`-5`, `0x1F`, `5L`, `2.5f`). Each `switch`/`match` case counts as `variable == value`, so every option of a menu gets tested. |
 | 3. Generate | Picks boundary values for each comparison, e.g. `age >= 18` gives 17, 18, 19, and combines variables into at most *max cases* test inputs. |
 | 4. Execute | Runs every test and records output, errors, exit codes and timeouts. Each value reaches the variable it belongs to (see below). Java and C are compiled once per run. |
-| 5. Measure | Records which true/false outcome of each `if`/`while` condition really happened at runtime. |
+| 5. Measure | Records which true/false outcome of each `if`/`while` condition really happened at runtime (branch coverage), and which statements ran (statement coverage). |
 | 6. Suggest | For each missing outcome, suggests an input set, runs it once, and marks it **verified** only if it actually reaches that outcome. |
 
 Optional strategies, for all three languages:
@@ -53,6 +53,21 @@ npm run dev                               # http://localhost:5173
 Open http://localhost:5173. The sidebar shows **Backend connected** when
 the API is reachable. To use another API address, set `VITE_API_URL`
 (for example in `frontend/.env.local`).
+
+## Evaluation: AST-targeted vs random testing
+
+```powershell
+.\.venv\Scripts\python -m src.evaluation.evaluate
+```
+
+This compares BranchLab's targeted tests with random tests of the **same
+size** (uniform integers in [-1000, 1000], mean of three seeds) on every
+example program, measuring branch coverage, statement coverage,
+generation time and **fault detection**: three boundary bugs are injected
+at each comparison (operator off by one, constant ± 1), and a suite
+catches a bug when any test's output changes. Results are written to
+[`docs/evaluation/results.md`](docs/evaluation/results.md). It takes
+several minutes, since every mutant is compiled and run.
 
 ## Running the tests
 
@@ -149,9 +164,12 @@ src/languages/          Python, Java and C adapters; shared Java/C engine,
 src/parser/analyzer/    Python condition analyzer, boundary values, executor
 src/coverage/           Python branch coverage, unsupported-syntax detection,
                         coverage suggestions
+src/evaluation/         Random baseline, mutation testing, evaluation script
 examples/               Demo programs for each language
 tests/                  pytest suite
 docs/architecture.md    How the pieces fit together
+docs/evaluation/        Evaluation results (AST-targeted vs random)
+docs/review2/           Review II progress report and Q&A preparation
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the design.
