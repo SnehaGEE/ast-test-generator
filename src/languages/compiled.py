@@ -15,7 +15,6 @@ from src.languages.branch_probes import (
     Branch,
     find_branches,
     find_untracked,
-    insert_probes,
     read_probe_hits,
     summarize_coverage,
 )

@@ -5,9 +5,6 @@ from src.core.input_order import python_answers
 from src.core.interfaces import LanguageAdapter
 from src.core.models import Condition, TestCase, TestResult
 from src.parser.analyzer.condition_analyzer import analyze_source
-from src.parser.analyzer.generator.test_generator import (
-    generate_boundary_tests,
-)
 from src.parser.analyzer.generator.executor.test_executor import (
     execute_test_case,
 )
@@ -33,26 +30,6 @@ class PythonAdapter(LanguageAdapter):
                 language="python",
             )
             for item in detected
-        ]
-
-    def generate_tests(self, condition: Condition) -> list[TestCase]:
-        """Generate boundary tests for a detected condition."""
-        values = generate_boundary_tests({
-            "variable": condition.variable,
-            "operator": condition.operator,
-            "constant": condition.value,
-            "line": condition.line,
-        })
-
-        return [
-            TestCase(
-                inputs={condition.variable: value},
-                description=(
-                    f"Boundary test for {condition.variable} "
-                    f"{condition.operator} {condition.value}"
-                ),
-            )
-            for value in values
         ]
 
     def execute(

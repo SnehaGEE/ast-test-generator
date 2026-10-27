@@ -8,7 +8,7 @@ when they do not end in break/return. Each language supplies a few hooks.
 
 from typing import Callable
 
-from src.core.read_paths import Branch, Case, Read, Switch, name_single_read
+from src.core.read_paths import Branch, Case, Switch, name_single_read
 from src.languages.input_plan import node_text
 from src.languages.tree_sitter_conditions import REVERSED_OPERATORS, SUPPORTED_OPERATORS
 
