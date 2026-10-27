@@ -153,6 +153,24 @@ function categoryLabel(category) {
   return CATEGORY_LABELS[category] ?? CATEGORY_LABELS.targeted;
 }
 
+function outputLines(output) {
+  return (output ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+// Lines every test printed (a banner, a menu, a fixed prompt) say nothing
+// about one test, so the table hides them and shows what differs.
+function sharedLines(tests) {
+  const outputs = tests.map((test) => new Set(outputLines(test.output)));
+  if (outputs.length < 2) return new Set();
+  return new Set([...outputs[0]].filter((line) => outputs.every((set) => set.has(line))));
+}
+
+function outputSummary(output, shared) {
+  const lines = outputLines(output);
+  const distinct = lines.filter((line) => !shared.has(line));
+  return (distinct.length ? distinct : lines.slice(-2)).join(" · ");
+}
+
 function formatInputs(inputs) {
   const text = JSON.stringify(inputs ?? {});
   return text.length > 120 ? `${text.slice(0, 117)}...` : text;
@@ -352,6 +370,7 @@ function App() {
   const statementPercent = coverage.statement_coverage_percent;
   const statements = coverage.statements;
   const lineCount = source.split("\n").length;
+  const commonOutput = sharedLines(testResults);
 
   // Prefer a useful backend message when no test cases are generated.
   const noTestsMessage =
@@ -689,7 +708,7 @@ function App() {
                                 </td>
                                 <td>
                                   <span className="clamp" title={output}>
-                                    {output || "—"}
+                                    {outputSummary(output, commonOutput) || "—"}
                                   </span>
                                 </td>
                                 <td>
