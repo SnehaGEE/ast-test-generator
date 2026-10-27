@@ -10,6 +10,9 @@ tested and which were missed.
 It supports **Python**, **Java** and **C** with the same features, and has
 a React web interface backed by a FastAPI server.
 
+**Live demo:** https://branchlab-ggon.onrender.com (the free server sleeps
+when idle, so the first visit can take about a minute).
+
 ## What it does
 
 | Step | What happens |
