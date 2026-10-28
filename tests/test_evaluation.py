@@ -138,3 +138,16 @@ def test_random_inputs_are_reproducible_and_in_range():
     for row in first:
         assert set(row) == {"a", "b"}
         assert all(-1000 <= value <= 1000 for value in row.values())
+
+
+def test_evaluation_covers_every_example_and_benchmark():
+    from src.evaluation.evaluate import PROGRAMS, ROOT
+
+    listed = {path for path, _ in PROGRAMS}
+    on_disk = {
+        path.relative_to(ROOT).as_posix()
+        for folder in ("examples", "benchmarks")
+        for path in (ROOT / folder).rglob("*")
+        if path.suffix in {".py", ".java", ".c"}
+    }
+    assert listed == on_disk

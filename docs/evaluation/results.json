@@ -10,13 +10,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 0.48
+      "generation_ms": 0.62
     },
     "random": {
       "branch": 29.17,
       "statement": 43.33,
       "mutation": 0.0,
-      "generation_ms": 0.04,
+      "generation_ms": 0.06,
       "per_seed": [
         {
           "seed": "random-1",
@@ -50,13 +50,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 0.57
+      "generation_ms": 0.42
     },
     "random": {
       "branch": 75.0,
       "statement": 83.33,
       "mutation": 0.0,
-      "generation_ms": 0.04,
+      "generation_ms": 0.03,
       "per_seed": [
         {
           "seed": "random-1",
@@ -90,13 +90,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 1.42
+      "generation_ms": 0.81
     },
     "random": {
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 0.05,
+      "generation_ms": 0.04,
       "per_seed": [
         {
           "seed": "random-1",
@@ -130,13 +130,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 0.55
+      "generation_ms": 0.53
     },
     "random": {
       "branch": 83.33,
       "statement": 90.47,
       "mutation": 0.0,
-      "generation_ms": 0.05,
+      "generation_ms": 0.04,
       "per_seed": [
         {
           "seed": "random-1",
@@ -170,19 +170,19 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 19.15
+      "generation_ms": 10.13
     },
     "random": {
       "branch": 29.17,
       "statement": 43.33,
-      "mutation": 2.22,
-      "generation_ms": 0.21,
+      "mutation": 0.0,
+      "generation_ms": 0.04,
       "per_seed": [
         {
           "seed": "random-1",
           "branch": 62.5,
           "statement": 70.0,
-          "mutation": 6.67
+          "mutation": 0.0
         },
         {
           "seed": "random-2",
@@ -210,13 +210,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 4.63
+      "generation_ms": 2.03
     },
     "random": {
       "branch": 75.0,
       "statement": 85.71,
       "mutation": 0.0,
-      "generation_ms": 0.25,
+      "generation_ms": 0.08,
       "per_seed": [
         {
           "seed": "random-1",
@@ -250,13 +250,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 5.81
+      "generation_ms": 7.36
     },
     "random": {
       "branch": 29.17,
       "statement": 48.48,
       "mutation": 0.0,
-      "generation_ms": 0.18,
+      "generation_ms": 0.03,
       "per_seed": [
         {
           "seed": "random-1",
@@ -290,13 +290,13 @@
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 1.68
+      "generation_ms": 0.69
     },
     "random": {
       "branch": 100.0,
       "statement": 100.0,
       "mutation": 100.0,
-      "generation_ms": 0.13,
+      "generation_ms": 0.06,
       "per_seed": [
         {
           "seed": "random-1",
@@ -330,13 +330,13 @@
       "branch": 48.0,
       "statement": 69.66,
       "mutation": 50.0,
-      "generation_ms": 22.37
+      "generation_ms": 11.91
     },
     "random": {
       "branch": 6.0,
       "statement": 15.17,
       "mutation": 11.11,
-      "generation_ms": 0.08,
+      "generation_ms": 0.06,
       "per_seed": [
         {
           "seed": "random-1",
@@ -355,6 +355,246 @@
           "branch": 6.0,
           "statement": 15.17,
           "mutation": 8.33
+        }
+      ]
+    }
+  },
+  {
+    "program": "benchmarks/python/shipping.py",
+    "language": "python",
+    "conditions": 6,
+    "tests": 20,
+    "mutants": 18,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 6.58
+    },
+    "random": {
+      "branch": 70.0,
+      "statement": 80.95,
+      "mutation": 0.0,
+      "generation_ms": 0.15,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 50.0,
+          "statement": 71.43,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 80.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 80.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "benchmarks/python/leap_year.py",
+    "language": "python",
+    "conditions": 1,
+    "tests": 3,
+    "mutants": 3,
+    "stillborn": 0,
+    "ast": {
+      "branch": 62.5,
+      "statement": 70.0,
+      "mutation": 100.0,
+      "generation_ms": 1.0
+    },
+    "random": {
+      "branch": 58.33,
+      "statement": 66.67,
+      "mutation": 0.0,
+      "generation_ms": 0.07,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 62.5,
+          "statement": 70.0,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 50.0,
+          "statement": 60.0,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 62.5,
+          "statement": 70.0,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "benchmarks/java/TaxSlab.java",
+    "language": "java",
+    "conditions": 8,
+    "tests": 20,
+    "mutants": 24,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 75.0,
+      "generation_ms": 11.6
+    },
+    "random": {
+      "branch": 72.22,
+      "statement": 84.85,
+      "mutation": 0.0,
+      "generation_ms": 0.08,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 75.0,
+          "statement": 86.36,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 75.0,
+          "statement": 86.36,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 66.67,
+          "statement": 81.82,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "benchmarks/java/Calculator.java",
+    "language": "java",
+    "conditions": 5,
+    "tests": 18,
+    "mutants": 3,
+    "stillborn": 0,
+    "ast": {
+      "branch": 100.0,
+      "statement": 100.0,
+      "mutation": 100.0,
+      "generation_ms": 5.91
+    },
+    "random": {
+      "branch": 0.0,
+      "statement": 44.44,
+      "mutation": 0.0,
+      "generation_ms": 0.33,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 0.0,
+          "statement": 44.44,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 0.0,
+          "statement": 44.44,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 0.0,
+          "statement": 44.44,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "benchmarks/c/electricity_bill.c",
+    "language": "c",
+    "conditions": 5,
+    "tests": 20,
+    "mutants": 15,
+    "stillborn": 0,
+    "ast": {
+      "branch": 90.0,
+      "statement": 89.47,
+      "mutation": 40.0,
+      "generation_ms": 1.55
+    },
+    "random": {
+      "branch": 86.67,
+      "statement": 92.98,
+      "mutation": 0.0,
+      "generation_ms": 0.06,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 80.0,
+          "statement": 89.47,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 90.0,
+          "statement": 94.74,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 90.0,
+          "statement": 94.74,
+          "mutation": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "program": "benchmarks/c/triangle.c",
+    "language": "c",
+    "conditions": 3,
+    "tests": 20,
+    "mutants": 9,
+    "stillborn": 0,
+    "ast": {
+      "branch": 50.0,
+      "statement": 71.43,
+      "mutation": 100.0,
+      "generation_ms": 1.11
+    },
+    "random": {
+      "branch": 50.0,
+      "statement": 71.43,
+      "mutation": 0.0,
+      "generation_ms": 0.1,
+      "per_seed": [
+        {
+          "seed": "random-1",
+          "branch": 37.5,
+          "statement": 64.29,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-2",
+          "branch": 75.0,
+          "statement": 85.71,
+          "mutation": 0.0
+        },
+        {
+          "seed": "random-3",
+          "branch": 37.5,
+          "statement": 64.29,
+          "mutation": 0.0
         }
       ]
     }

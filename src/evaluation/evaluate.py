@@ -43,6 +43,14 @@ PROGRAMS = [
     ("examples/c/grade.c", "c"),
     ("examples/c/countdown.c", "c"),
     ("examples/c/bank.c", "c"),
+    # Benchmarks: common lab exercises, including forms the tool cannot
+    # target (sums of variables, x % 4, values computed from inputs).
+    ("benchmarks/python/shipping.py", "python"),
+    ("benchmarks/python/leap_year.py", "python"),
+    ("benchmarks/java/TaxSlab.java", "java"),
+    ("benchmarks/java/Calculator.java", "java"),
+    ("benchmarks/c/electricity_bill.c", "c"),
+    ("benchmarks/c/triangle.c", "c"),
 ]
 
 ADAPTERS = {"python": PythonAdapter, "java": JavaAdapter, "c": CAdapter}
@@ -192,6 +200,9 @@ def write_report(results: list[dict], out_dir: Path) -> None:
         "- Random inputs share the targeted suite's size, so neither side gets more tests.",
         "- `bank.c` needs several menu actions in one run for some branches; neither",
         "  approach generates such sequences (see README limitations).",
+        "- `benchmarks/` holds lab exercises with conditions the tool cannot target",
+        "  directly: `a + b <= c` (triangle), `year % 400 == 0` (leap year) and",
+        "  `bill > 1000`, where `bill` is computed from the input (electricity bill).",
         "",
     ]
     (out_dir / "results.md").write_text("\n".join(lines), encoding="utf-8")
