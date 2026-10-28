@@ -82,12 +82,16 @@ this is not a security sandbox, so share the link only with people you trust.
 
 This compares BranchLab's targeted tests with random tests of the **same
 size** (uniform integers in [-1000, 1000], mean of three seeds) on every
-example program, measuring branch coverage, statement coverage,
+example and benchmark program, measuring branch coverage, statement coverage,
 generation time and **fault detection**: three boundary bugs are injected
 at each comparison (operator off by one, constant ± 1), and a suite
 catches a bug when any test's output changes. Results are written to
 [`docs/evaluation/results.md`](docs/evaluation/results.md). It takes
 several minutes, since every mutant is compiled and run.
+
+`benchmarks/` holds six common lab exercises. Three of them contain
+conditions BranchLab cannot target (`a + b <= c`, `year % 400 == 0`, a
+value computed from the input), so the results show its limits too.
 
 ## Running the tests
 
@@ -186,10 +190,13 @@ src/coverage/           Python branch coverage, unsupported-syntax detection,
                         coverage suggestions
 src/evaluation/         Random baseline, mutation testing, evaluation script
 examples/               Demo programs for each language
+benchmarks/             Extra evaluation programs (lab exercises)
 tests/                  pytest suite
 docs/architecture.md    How the pieces fit together
 docs/evaluation/        Evaluation results (AST-targeted vs random)
 docs/review2/           Review II progress report and Q&A preparation
+docs/review3/           Review III manuscript, slides, contribution
+                        statement, demo and viva guide
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the design.
