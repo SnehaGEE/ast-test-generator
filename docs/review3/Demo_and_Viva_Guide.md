@@ -22,8 +22,7 @@ Numbers come from [`../evaluation/results.md`](../evaluation/results.md)
 - [ ] Backup if the network fails: in the project folder run
       `.\.venv\Scripts\python -m uvicorn api:app`, and in `frontend/`
       run `npm run dev`; open http://localhost:5173.
-- [ ] Fill in the one yellow placeholder left in the manuscript (the guide's
-      e-mail) in `main.tex` on Overleaf before submitting it.
+- [ ] Compile the manuscript on Overleaf and read the PDF once before submitting it.
 
 ## Demo script (about 5 minutes)
 
@@ -42,7 +41,7 @@ about 4 milliseconds."*
 
 - **"I am the only team member."** I designed and built the analysis,
   generation, read map, probes, coverage, interface, evaluation, deployment
-  and manuscript. The Git history shows 51 commits from 6 to 28 October.
+  and manuscript. The Git history shows 52 commits from 6 to 28 October.
 - **Hardest problem:** delivering inputs. Programs read by position, but values
   are generated per variable. A menu option that reads `no, name, amount` must not
   receive what another option reads. The read map follows each test's own path
